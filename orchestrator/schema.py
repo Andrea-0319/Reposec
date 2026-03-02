@@ -24,8 +24,10 @@ def _keep_true(current: bool, update: bool) -> bool:
 
 class SecurityState(TypedDict):
     """Shared state for the LangGraph pipeline."""
-    repo_path: str                                          # Absolute path of the analyzed local repo
+    repo_path: str                                          # Absolute path of the original repo (for reference)
+    working_repo: str                                       # Sandboxed copy of the repo (agents work here)
     scan_output_dir: str                                    # Directory to save intermediate and final results
+    model_override: Optional[str]                           # Model override from CLI (avoids Config mutation)
     fingerprint: str                                        # Markdown string of the tech footprint
     file_manifest: str                                      # List of relevant source files (markdown)
     current_agent: str                                      # Agent currently executing

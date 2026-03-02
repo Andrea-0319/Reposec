@@ -45,6 +45,12 @@ class Config:
     OPENCODE_MODEL: str = os.getenv("OPENCODE_MODEL", "opencode/minimax-m2.5-free")
     OPENCODE_TIMEOUT: int = _safe_int(os.getenv("OPENCODE_TIMEOUT", "1800"), 1800)
     
+    # Patterns to exclude when copying the repo for sandboxed analysis
+    COPY_IGNORE_PATTERNS: List[str] = [
+        ".git", "node_modules", "venv", ".venv", "__pycache__", 
+        ".env", ".env.local", ".env.production",
+    ]
+    
     # Paths configuration
     BASE_PATH: Path = Path(__file__).parent
     AGENTS_PATH: Path = BASE_PATH / "agents"

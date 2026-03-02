@@ -1,15 +1,30 @@
 """OpenCode client for executing agent tasks."""
 import os
+import re
 import signal
 import subprocess
 import shutil
 import time
+import uuid
 from pathlib import Path
 from typing import Optional
 
 from config import Config, setup_logger
 
 log = setup_logger("opencode")
+
+# Regex whitelist: solo alfanumerici, punti, slash e trattini
+_MODEL_NAME_RE = re.compile(r'^[\w./-]+$')
+
+
+def _validate_model_name(model: str) -> str:
+    """Validates model name against dangerous characters (shell injection vector)."""
+    if not _MODEL_NAME_RE.match(model):
+        raise ValueError(
+            f"Invalid model name: {model!r}. "
+            "Only alphanumeric, dots, slashes, and hyphens are allowed."
+        )
+    return model
 
 # On Windows, CREATE_NEW_PROCESS_GROUP lets us kill the entire process tree.
 _IS_WINDOWS = os.name == "nt"
@@ -18,7 +33,7 @@ class OpenCodeClient:
     """Client for interacting with opencode CLI."""
 
     def __init__(self, model: Optional[str] = None, timeout: Optional[int] = None):
-        self.model = model or Config.OPENCODE_MODEL
+        self.model = _validate_model_name(model or Config.OPENCODE_MODEL)
         self.timeout = timeout or Config.OPENCODE_TIMEOUT
         self._executable = self._find_executable()
 
@@ -35,20 +50,32 @@ class OpenCodeClient:
             "See: https://github.com/opencode-ai/opencode"
         )
 
-    def execute_prompt(self, prompt: str, working_dir: str, agent_name: str = "unknown") -> dict:
-        """Execute a prompt using 'opencode run' (non-interactive, one-shot)."""
+    def execute_prompt(self, prompt: str, working_dir: str, 
+                       scan_output_dir: str, agent_name: str = "unknown") -> dict:
+        """Execute a prompt using 'opencode run' (non-interactive, one-shot).
+        
+        Args:
+            prompt: Full agent prompt text.
+            working_dir: CWD for the subprocess (sandboxed repo copy).
+            scan_output_dir: Isolated dir for prompt files, logs, and outputs.
+            agent_name: Identifier for logging and file naming.
+        """
         start_time = time.time()
         cwd = Path(working_dir)
+        scan_dir = Path(scan_output_dir)
         prompt_file = None
 
         try:
             is_script = self._executable.lower().endswith((".cmd", ".bat"))
 
-            # ALWAYS write prompt to file to avoid shell escaping issues
-            prompt_file = cwd / ".agent-prompt.md"
+            # Write prompt to isolated scan dir with unique name (never in target repo)
+            prompt_filename = f".prompt-{agent_name}-{uuid.uuid4().hex[:8]}.md"
+            prompt_file = scan_dir / prompt_filename
             prompt_file.write_text(prompt, encoding="utf-8")
+            
+            # Tell the agent where to find its prompt file (absolute path)
             cli_prompt = (
-                "Read the file '.agent-prompt.md' in your current working directory. "
+                f"Read the file '{prompt_file}'. "
                 "It contains your complete task description. "
                 "Follow ALL instructions in it precisely and create all required files."
             )
@@ -84,8 +111,8 @@ class OpenCodeClient:
             stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
             stderr = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
 
-            # Persist agent output for post-mortem debugging
-            self._save_agent_log(agent_name, stdout, stderr, proc.returncode, duration, cwd)
+            # Persist agent output for post-mortem debugging (in scan dir, not repo)
+            self._save_agent_log(agent_name, stdout, stderr, proc.returncode, duration, scan_dir)
 
             return {
                 "success": proc.returncode == 0,
@@ -131,10 +158,10 @@ class OpenCodeClient:
             proc.wait(timeout=5)
 
     def _save_agent_log(self, agent_name: str, stdout: str, stderr: str,
-                        returncode: int, duration: float, cwd: Path):
-        """Save agent stdout/stderr to a log file for debugging in the specific scan output dir."""
+                        returncode: int, duration: float, scan_dir: Path):
+        """Save agent stdout/stderr to a log file inside the scan output directory."""
         try:
-            logs_dir = cwd / "logs"
+            logs_dir = scan_dir / "logs"
             logs_dir.mkdir(parents=True, exist_ok=True)
             ts = time.strftime("%Y%m%d_%H%M%S")
             log_path = logs_dir / f"{agent_name}_{ts}.log"

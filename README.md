@@ -47,17 +47,24 @@ python main.py "C:\path\to\your\repo" --verbose
 
 # Specify a custom OpenCode model
 python main.py "C:\path\to\your\repo" --model "opencode/glm-5-free"
+
+# Copy the report into the analyzed repo root
+python main.py "C:\path\to\your\repo" --copy-report
 ```
 
 ## Output
 
-The final report will be dropped right into the folder of the repository you analyzed:
-`C:\path\to\your\repo\security_report.md`
+The final report is saved in the scan directory:
+`state/scan_<timestamp>/security_report.md`
 
-Intermediate outputs and agent execution logs are stored locally within the `state/scan_<timestamp>` directory.
+Use `--copy-report` to also copy it into the analyzed repository root.
 
-## Rules & Guardrails
+Intermediate outputs (findings, fingerprint) and agent execution logs are stored in the same `state/scan_<timestamp>/` directory.
 
-- **Read-Only (prompt-enforced)**: Agents are instructed via prompt to never modify the analyzed repository. All outputs are saved in the isolated `state/` workspace. Note: this is a soft constraint — no filesystem-level sandboxing is applied in the MVP.
+## Security & Guardrails
+
+- **Sandboxed Execution**: The analyzed repository is copied into an isolated `state/scan_<timestamp>/repo_copy/` directory. All agents work on the copy, which is automatically deleted after the scan. The original repository is never modified.
+- **Anti-Prompt-Injection**: Context files injected into agent prompts are sanitized (dangerous patterns neutralized, content truncated, XML-delimited). All agent prompts include explicit safety rules to treat file contents as data only.
+- **Input Validation**: Model names are validated against a strict regex whitelist to prevent shell injection.
 - **Configurable Models**: Native integration with flexible, free-tier-friendly LLMs supported by OpenCode (`Minimax`, `GLM`).
 - **Sequential Pipeline (MVP)**: Analysis agents run sequentially. Parallel fan-out is planned for a future phase.
