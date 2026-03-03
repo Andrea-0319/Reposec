@@ -11,6 +11,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Security Review System MVP")
     parser.add_argument("repo_path", help="Absolute or relative path to the local repository to analyze")
     parser.add_argument("--model", default=None, help="OpenCode model to use")
+    parser.add_argument(
+        "--parallel", type=int, default=1, choices=range(1, 5),
+        metavar="N", help="Number of analysis agents to run in parallel (1-4, default: 1)",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
     parser.add_argument(
         "--copy-report", action="store_true",
@@ -46,7 +50,10 @@ def main() -> None:
         return
     
     # Initial state based on schema.py TypedDict
+    logger.info(f"Parallel agents: {args.parallel}")
+    
     initial_state = {
+        "max_parallel": args.parallel,            # User-configured parallelism (1-4)
         "repo_path": str(repo_path),            # Original path (for reference in report)
         "working_repo": str(repo_copy_dir),      # Sandboxed copy (agents work here)
         "scan_output_dir": str(scan_dir),
@@ -60,13 +67,15 @@ def main() -> None:
         "stop_requested": False,
     }
     
-    # Initialize Graph
-    graph = create_workflow()
+    # Initialize Graph (topologia adattata al livello di parallelismo)
+    graph = create_workflow(max_parallel=args.parallel)
     
     # Stream execution
     try:
         start_time = time.time()
-        for event in graph.stream(initial_state, stream_mode="updates"):
+        # max_concurrency throttla i subprocess paralleli effettivi
+        stream_config = {"max_concurrency": args.parallel}
+        for event in graph.stream(initial_state, stream_mode="updates", config=stream_config):
             for node_name, state_updates in event.items():
                 logger.info(f"[+] Completed node stream: {node_name}")
                 if "errors" in state_updates and state_updates["errors"]:

@@ -24,6 +24,7 @@ def _keep_true(current: bool, update: bool) -> bool:
 
 class SecurityState(TypedDict):
     """Shared state for the LangGraph pipeline."""
+    max_parallel: int                                       # Number of analysis agents to run in parallel (1-4)
     repo_path: str                                          # Absolute path of the original repo (for reference)
     working_repo: str                                       # Sandboxed copy of the repo (agents work here)
     scan_output_dir: str                                    # Directory to save intermediate and final results
