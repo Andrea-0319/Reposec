@@ -49,6 +49,9 @@ def main() -> None:
         logger.error(f"Failed to create sandboxed repo copy: {e}")
         return
     
+    # Defensive validation: clamp parallel to safe range (argparse già filtra, ma proteggiamo da chiamate programmatiche)
+    args.parallel = max(1, min(args.parallel, 4))
+    
     # Initial state based on schema.py TypedDict
     logger.info(f"Parallel agents: {args.parallel}")
     
