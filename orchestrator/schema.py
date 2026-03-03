@@ -22,6 +22,11 @@ def _keep_true(current: bool, update: bool) -> bool:
     return current or update
 
 
+def _last_value(current: str, update: str) -> str:
+    """Simple reducer: last writer wins (safe for parallel nodes)."""  
+    return update
+
+
 class SecurityState(TypedDict):
     """Shared state for the LangGraph pipeline."""
     max_parallel: int                                       # Number of analysis agents to run in parallel (1-4)
@@ -31,7 +36,7 @@ class SecurityState(TypedDict):
     model_override: Optional[str]                           # Model override from CLI (avoids Config mutation)
     fingerprint: str                                        # Markdown string of the tech footprint
     file_manifest: str                                      # List of relevant source files (markdown)
-    current_agent: str                                      # Agent currently executing
+    current_agent: Annotated[str, _last_value]               # Agent currently executing (last-writer-wins in parallel)
     agent_outputs: Annotated[                               # agent_name -> AgentResult
         Dict[str, AgentResult], _merge_agent_outputs
     ]                                 
