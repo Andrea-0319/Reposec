@@ -1,4 +1,4 @@
-"""OpenCode client for executing agent tasks."""
+"""CLI backend for OpenCode — executes prompts via 'opencode run' subprocess."""
 import os
 import re
 import signal
@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from config import Config, setup_logger
+from orchestrator.opencode_backend import OpenCodeBackend
 
 log = setup_logger("opencode")
 
@@ -29,12 +30,12 @@ def _validate_model_name(model: str) -> str:
 # On Windows, CREATE_NEW_PROCESS_GROUP lets us kill the entire process tree.
 _IS_WINDOWS = os.name == "nt"
 
-class OpenCodeClient:
-    """Client for interacting with opencode CLI."""
+class CLIBackend(OpenCodeBackend):
+    """Backend OpenCode basato su subprocess CLI ('opencode run')."""
 
     def __init__(self, model: Optional[str] = None, timeout: Optional[int] = None):
-        self.model = _validate_model_name(model or Config.OPENCODE_MODEL)
-        self.timeout = timeout or Config.OPENCODE_TIMEOUT
+        resolved_model = _validate_model_name(model or Config.OPENCODE_MODEL)
+        super().__init__(resolved_model, timeout or Config.OPENCODE_TIMEOUT)
         self._executable = self._find_executable()
 
     def _find_executable(self) -> str:
@@ -175,3 +176,7 @@ class OpenCodeClient:
                 f.write(stderr or "(empty)\n")
         except Exception as e:
             log.warning("Failed to save agent log: %s", e)
+
+
+# Backward-compat alias (verrà rimosso dopo l'aggiornamento dei test)
+OpenCodeClient = CLIBackend

@@ -12,6 +12,14 @@ def main() -> None:
     parser.add_argument("repo_path", help="Absolute or relative path to the local repository to analyze")
     parser.add_argument("--model", default=None, help="OpenCode model to use")
     parser.add_argument(
+        "--backend", default=None, choices=["cli", "sdk"],
+        help="OpenCode backend: 'cli' (subprocess, default) or 'sdk' (Python SDK)",
+    )
+    parser.add_argument(
+        "--sdk-url", default=None,
+        help="URL del server OpenCode per il backend SDK (es. http://192.168.1.100:54321)",
+    )
+    parser.add_argument(
         "--parallel", type=int, default=1, choices=range(1, 5),
         metavar="N", help="Number of analysis agents to run in parallel (1-4, default: 1)",
     )
@@ -56,11 +64,13 @@ def main() -> None:
     logger.info(f"Parallel agents: {args.parallel}")
     
     initial_state = {
+        "backend_type": args.backend or Config.OPENCODE_BACKEND,
         "max_parallel": args.parallel,            # User-configured parallelism (1-4)
         "repo_path": str(repo_path),            # Original path (for reference in report)
         "working_repo": str(repo_copy_dir),      # Sandboxed copy (agents work here)
         "scan_output_dir": str(scan_dir),
         "model_override": args.model,            # Passed via state, not Config mutation
+        "sdk_url": args.sdk_url or Config.OPENCODE_SDK_URL,  # URL server SDK (None = localhost)
         "fingerprint": "", 
         "file_manifest": "",
         "current_agent": "", 

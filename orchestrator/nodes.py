@@ -6,7 +6,7 @@ from typing import Callable, Dict, Any
 
 from config import setup_logger, Config
 from orchestrator.schema import SecurityState, AgentResult
-from orchestrator.opencode_client import OpenCodeClient
+from orchestrator.backend_factory import create_backend
 from orchestrator.agent_config import AGENT_IO
 
 log = setup_logger("nodes")
@@ -149,7 +149,9 @@ def create_node_wrapper(agent_name: str, prompt_file: Path) -> Callable[[Securit
         
         # Use model_override from state if provided (avoids mutating Config singleton)
         model = state.get("model_override") or None
-        client = OpenCodeClient(model=model)
+        backend_type = state.get("backend_type", "cli")
+        sdk_url = state.get("sdk_url")
+        client = create_backend(backend_type=backend_type, model=model, base_url=sdk_url)
         
         # All agents run on the sandboxed repo copy
         working_dir = state["working_repo"]

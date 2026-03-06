@@ -2,7 +2,7 @@
 import os
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from dotenv import load_dotenv
 from orchestrator.logging_utils import ColoredFormatter
@@ -42,6 +42,8 @@ class Config:
     ]
     
     # OpenCode settings
+    OPENCODE_BACKEND: str = os.getenv("OPENCODE_BACKEND", "cli")  # "cli" | "sdk"
+    OPENCODE_SDK_URL: Optional[str] = os.getenv("OPENCODE_SDK_URL")  # URL server remoto (es. http://192.168.1.100:54321)
     OPENCODE_MODEL: str = os.getenv("OPENCODE_MODEL", "opencode/minimax-m2.5-free")
     OPENCODE_TIMEOUT: int = _safe_int(os.getenv("OPENCODE_TIMEOUT", "1800"), 1800)
     
