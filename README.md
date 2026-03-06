@@ -6,7 +6,7 @@ This platform sequentially routes a targeted codebase through multiple specializ
 
 ## Architecture
 
-The system uses a linear pipeline orchestrated by LangGraph:
+The system uses a flexible pipeline orchestrated by LangGraph:
 1. **Ingest Agent**: Explores the repository to footprint the tech stack and identify relevant source code files.
 2. **Backend Security**: Analyzes backend source code for vulnerabilities (Injection, Auth scaling, SSRF, Access Control).
 3. **Frontend Security**: Analyzes frontend sources (XSS, CORS, CSP).
@@ -18,7 +18,7 @@ The system uses a linear pipeline orchestrated by LangGraph:
 ## Prerequisites
 
 1. Python 3.10+
-2. [OpenCode CLI](https://github.com/opencode-ai/opencode) installed and available in your `PATH`.
+2. **OpenCode**: Either the [OpenCode CLI](https://github.com/opencode-ai/opencode) installed and available in your `PATH`, or an accessible OpenCode SDK server.
 
 ## Installation
 
@@ -42,8 +42,11 @@ Analyze a local repository by providing its path to `main.py`.
 # Basic usage
 python main.py "C:\path\to\your\repo"
 
-# Verbose logging
-python main.py "C:\path\to\your\repo" --verbose
+# Run with up to 4 parallel agents (faster execution)
+python main.py "C:\path\to\your\repo" --parallel 4
+
+# Use the Python SDK backend connected to a remote OpenCode server
+python main.py "C:\path\to\your\repo" --backend sdk --sdk-url "http://192.168.1.100:54321"
 
 # Specify a custom OpenCode model
 python main.py "C:\path\to\your\repo" --model "opencode/glm-5-free"
@@ -51,6 +54,19 @@ python main.py "C:\path\to\your\repo" --model "opencode/glm-5-free"
 # Copy the report into the analyzed repo root
 python main.py "C:\path\to\your\repo" --copy-report
 ```
+
+## Testing
+
+The project includes a comprehensive test suite using `pytest`.
+
+```bash
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Run all tests
+pytest tests/ -v
+```
+
 
 ## Output
 
@@ -61,10 +77,6 @@ Use `--copy-report` to also copy it into the analyzed repository root.
 
 Intermediate outputs (findings, fingerprint) and agent execution logs are stored in the same `state/scan_<timestamp>/` directory.
 
-## Security & Guardrails
-
-- **Sandboxed Execution**: The analyzed repository is copied into an isolated `state/scan_<timestamp>/repo_copy/` directory. All agents work on the copy, which is automatically deleted after the scan. The original repository is never modified.
-- **Anti-Prompt-Injection**: Context files injected into agent prompts are sanitized (dangerous patterns neutralized, content truncated, XML-delimited). All agent prompts include explicit safety rules to treat file contents as data only.
-- **Input Validation**: Model names are validated against a strict regex whitelist to prevent shell injection.
-- **Configurable Models**: Native integration with flexible, free-tier-friendly LLMs supported by OpenCode (`Minimax`, `GLM`).
-- **Sequential Pipeline (MVP)**: Analysis agents run sequentially. Parallel fan-out is planned for a future phase.
+- **Safety & Guardrails**: Sandboxed execution, prompt sanitization, input validation.
+- **Configurable Parallelism**: Agents can run independently with fan-out/fan-in parallel topologies (via `--parallel N`).
+- **Flexible Backend**: Supports both local CLI execution and remote Python SDK connections to OpenCode instances.
