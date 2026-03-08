@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Shield, ShieldAlert, ShieldCheck, Terminal, AlertCircle } from "lucide-react"
+import { Shield, ShieldAlert, ShieldCheck, Terminal, AlertCircle, Trash2 } from "lucide-react"
 import { Link } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
@@ -57,12 +57,33 @@ export default function Dashboard() {
         return <AlertCircle className="size-5 text-muted-foreground" />
     }
 
+    const handleDeleteProject = async (e: React.MouseEvent, projectId: number) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (!confirm("Are you sure you want to delete this project? This will also permanently delete all its scans and findings.")) return;
+
+        try {
+            const res = await fetch(`http://localhost:8000/api/projects/${projectId}`, {
+                method: "DELETE"
+            });
+            if (res.ok) {
+                setProjects(prev => prev.filter(p => p.id !== projectId));
+            } else {
+                const data = await res.json();
+                alert(data.detail || "Failed to delete project");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error deleting project");
+        }
+    }
+
     return (
         <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500 max-w-7xl mx-auto">
             <div className="flex flex-col gap-2 relative border-b pb-6">
                 <h1 className="text-3xl font-bold tracking-tight">Dashboard overview</h1>
                 <p className="text-muted-foreground max-w-2xl">
-                    Visualizza i repository analizzati e l'overview delle vulnerabilità critiche dal DB di SQLite.
+                    View analyzed repositories and critical vulnerabilities overview from the SQLite DB.
                 </p>
             </div>
 
@@ -82,9 +103,9 @@ export default function Dashboard() {
             ) : projects.length === 0 && !error ? (
                 <div className="rounded-xl border border-dashed p-12 text-center flex flex-col items-center">
                     <Terminal className="size-10 text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold">Nessun progetto trovato</h3>
+                    <h3 className="text-lg font-semibold">No projects found</h3>
                     <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                        Avvia una scansione per popolare questa dashboard utilizzando il tab di launch o la CLI.
+                        Start a scan to populate this dashboard using the launch tab or CLI.
                     </p>
                 </div>
             ) : (
@@ -104,8 +125,17 @@ export default function Dashboard() {
                                         {project.repo_path}
                                     </p>
                                 </div>
-                                <div title={`Status: ${project.last_scan_status}`}>
-                                    {getStatusIcon(project.last_scan_status)}
+                                <div className="flex items-start gap-2">
+                                    <div title={`Status: ${project.last_scan_status}`}>
+                                        {getStatusIcon(project.last_scan_status)}
+                                    </div>
+                                    <button
+                                        onClick={(e) => handleDeleteProject(e, project.id)}
+                                        className="text-destructive hover:bg-destructive/10 p-1 rounded-md transition-colors opacity-0 group-hover:opacity-100"
+                                        title="Delete Project"
+                                    >
+                                        <Trash2 className="size-4" />
+                                    </button>
                                 </div>
                             </div>
 
@@ -119,23 +149,23 @@ export default function Dashboard() {
                                         {project.total_findings ?? 0}
                                     </span>
                                     <span className="text-sm text-muted-foreground font-medium mb-1">
-                                        totali
+                                        total
                                     </span>
                                 </div>
                                 <div className="flex gap-2 text-[11px] mt-4 mb-2">
                                     <span className="bg-destructive/10 text-destructive px-2 py-1 rounded font-semibold border border-destructive/20">
-                                        {project.critical ?? 0} Critici
+                                        {project.critical ?? 0} Critical
                                     </span>
                                     <span className="bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 px-2 py-1 rounded font-semibold">
-                                        {project.high ?? 0} Alti
+                                        {project.high ?? 0} High
                                     </span>
                                     <span className="bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20 px-2 py-1 rounded font-semibold">
-                                        {project.medium ?? 0} Medi
+                                        {project.medium ?? 0} Medium
                                     </span>
                                 </div>
                             </div>
                             <div className="bg-muted/40 px-6 py-3 mt-4 text-xs text-muted-foreground border-t flex items-center justify-between group-hover:bg-primary/5 transition-colors">
-                                <span className="font-medium">Ultimo Scan</span>
+                                <span className="font-medium">Last Scan</span>
                                 <span>{formatDate(project.last_scan_date)}</span>
                             </div>
                         </Link>

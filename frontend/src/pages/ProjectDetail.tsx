@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useParams, Link } from "react-router-dom"
-import { ArrowLeft, History, ShieldAlert, ShieldCheck, PlayCircle, Loader2 } from "lucide-react"
+import { ArrowLeft, History, ShieldAlert, ShieldCheck, PlayCircle, Loader2, Trash2 } from "lucide-react"
 import {
     LineChart,
     Line,
@@ -84,6 +84,27 @@ export default function ProjectDetail() {
         High: s.high
     }))
 
+    const handleDelete = async (scanId: number) => {
+        if (!confirm("Are you sure you want to delete this scan? This action cannot be undone.")) return;
+
+        try {
+            const res = await fetch(`http://localhost:8000/api/scans/${scanId}`, {
+                method: "DELETE"
+            });
+
+            if (res.ok) {
+                // Remove the scan from the UI
+                setScans(prev => prev.filter(s => s.id !== scanId));
+            } else {
+                const data = await res.json();
+                alert(data.detail || "Failed to delete scan");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error deleting scan");
+        }
+    }
+
     // Reverse back for the table (newest first)
     const displayScans = [...scans].reverse()
 
@@ -143,7 +164,7 @@ export default function ProjectDetail() {
                         ) : (
                             <div className="flex items-center justify-center h-full border-2 border-dashed rounded-lg">
                                 <p className="text-sm text-muted-foreground text-center">
-                                    Non ci sono abbastanza dati per il grafico.<br />Serve più di uno scan completato.
+                                    Not enough data for the chart.<br />More than one completed scan is required.
                                 </p>
                             </div>
                         )}
@@ -153,43 +174,46 @@ export default function ProjectDetail() {
                 {/* Action / Overview Card */}
                 <div className="rounded-xl border bg-card shadow-sm p-6 flex flex-col relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-full -z-10" />
-                    <h3 className="font-semibold text-lg mb-4">Azioni Rapide</h3>
+                    <h3 className="font-semibold text-lg mb-4">Quick Actions</h3>
 
                     <div className="p-4 bg-muted/30 rounded-lg border mb-6">
-                        <div className="text-sm text-muted-foreground mb-1">Stato Progetto</div>
+                        <div className="text-sm text-muted-foreground mb-1">Project Status</div>
                         <div className="flex items-center gap-2">
                             {displayScans[0]?.status === "completed" ? (
                                 <ShieldCheck className="size-5 text-green-500" />
                             ) : (
                                 <ShieldAlert className="size-5 text-red-500" />
                             )}
-                            <span className="font-medium capitalize">{displayScans[0]?.status || "Sconosciuto"}</span>
+                            <span className="font-medium capitalize">{displayScans[0]?.status || "Unknown"}</span>
                         </div>
                     </div>
 
-                    <button className="mt-auto flex items-center justify-center gap-2 w-full bg-primary text-primary-foreground hover:bg-primary/90 py-2.5 rounded-md font-medium transition-colors cursor-not-allowed opacity-80" disabled>
+                    <Link
+                        to={`/launch?repo=${encodeURIComponent(projectInfo?.repo_path || "")}`}
+                        className="mt-auto flex items-center justify-center gap-2 w-full bg-primary text-primary-foreground hover:bg-primary/90 py-2.5 rounded-md font-medium transition-colors"
+                    >
                         <PlayCircle className="size-4" />
-                        Lancia Nuovo Scan
-                    </button>
+                        Launch New Scan
+                    </Link>
                     <p className="text-xs text-center text-muted-foreground mt-3">
-                        Per ora lancia gli scan via CLI o tab Launch.
+                        Launch a new scan for this repository using the dashboard.
                     </p>
                 </div>
             </div>
 
             {/* Scans Timeline list */}
             <div>
-                <h3 className="text-lg font-semibold mb-4 px-1">Cronologia Scans</h3>
+                <h3 className="text-lg font-semibold mb-4 px-1">Scans Timeline</h3>
                 <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
                             <thead className="text-xs text-muted-foreground bg-muted/50 uppercase border-b">
                                 <tr>
-                                    <th className="px-6 py-3 font-medium">Data</th>
-                                    <th className="px-6 py-3 font-medium">Stato</th>
-                                    <th className="px-6 py-3 font-medium text-right">Durata</th>
-                                    <th className="px-6 py-3 font-medium text-center">Critici/Alti</th>
-                                    <th className="px-6 py-3 font-medium text-right">Azioni</th>
+                                    <th className="px-6 py-3 font-medium">Date</th>
+                                    <th className="px-6 py-3 font-medium">Status</th>
+                                    <th className="px-6 py-3 font-medium text-right">Duration</th>
+                                    <th className="px-6 py-3 font-medium text-center">Vulnerabilities (C/H/M/L)</th>
+                                    <th className="px-6 py-3 font-medium text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
@@ -210,27 +234,37 @@ export default function ProjectDetail() {
                                         <td className="px-6 py-4 text-right text-muted-foreground">
                                             {scan.duration_seconds ? `${scan.duration_seconds.toFixed(1)}s` : "-"}
                                         </td>
-                                        <td className="px-6 py-4 text-center">
-                                            <div className="flex justify-center gap-2">
-                                                <span className="text-destructive font-medium">{scan.critical}</span>
-                                                <span className="text-muted-foreground">/</span>
-                                                <span className="text-orange-500 font-medium">{scan.high}</span>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center justify-center gap-2 font-medium">
+                                                <span className="text-destructive w-6 text-center">{scan.critical}</span>
+                                                <span className="text-orange-500 w-6 text-center">{scan.high}</span>
+                                                <span className="text-yellow-600 w-6 text-center">{scan.medium}</span>
+                                                <span className="text-blue-500 w-6 text-center">{scan.low}</span>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <Link
-                                                to={`/scan/${scan.id}`}
-                                                className="text-primary hover:underline font-medium text-sm inline-flex items-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                            >
-                                                Vedi Dettagli &rarr;
-                                            </Link>
+                                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Link
+                                                    to={`/scan/${scan.id}`}
+                                                    className="text-primary hover:underline font-medium text-sm inline-flex items-center"
+                                                >
+                                                    View Details &rarr;
+                                                </Link>
+                                                <button
+                                                    onClick={() => handleDelete(scan.id)}
+                                                    className="text-destructive hover:bg-destructive/10 p-2 rounded-md transition-colors"
+                                                    title="Delete Scan"
+                                                >
+                                                    <Trash2 className="size-4" />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
                                 {displayScans.length === 0 && (
                                     <tr>
                                         <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
-                                            Nessuno scan disponibile per questo progetto.
+                                            No scans available for this project.
                                         </td>
                                     </tr>
                                 )}

@@ -120,6 +120,24 @@ def get_projects(db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
         conn.close()
 
 
+def delete_project(project_id: int, db_path: Optional[Path] = None) -> bool:
+    """Delete a project and all its nested scans/findings."""
+    conn = _get_connection(db_path)
+    try:
+        row = conn.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if not row:
+            return False
+            
+        conn.execute("DELETE FROM findings WHERE scan_id IN (SELECT id FROM scans WHERE project_id = ?)", (project_id,))
+        conn.execute("DELETE FROM scans WHERE project_id = ?", (project_id,))
+        conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Scan CRUD
 # ---------------------------------------------------------------------------
@@ -187,6 +205,26 @@ def get_scan_detail(scan_id: int,
     finally:
         conn.close()
 
+
+
+def delete_scan(scan_id: int, db_path: Optional[Path] = None) -> bool:
+    """Delete a scan and all its findings from the database."""
+    conn = _get_connection(db_path)
+    try:
+        # Check if scan exists first
+        row = conn.execute("SELECT scan_dir FROM scans WHERE id = ?", (scan_id,)).fetchone()
+        if not row:
+            return False
+            
+        # Delete dependent findings first (in case FK constraints aren't enough)
+        conn.execute("DELETE FROM findings WHERE scan_id = ?", (scan_id,))
+        
+        # Delete the scan itself
+        conn.execute("DELETE FROM scans WHERE id = ?", (scan_id,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
 
 # ---------------------------------------------------------------------------
 # Findings CRUD

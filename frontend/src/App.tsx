@@ -6,6 +6,7 @@ import ScanReport from "./pages/ScanReport"
 import CompareScans from "./pages/CompareScans"
 import AllScans from "./pages/AllScans"
 import Settings from "./pages/Settings"
+import LaunchScan from "./pages/LaunchScan"
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <Route path="scan/:id" element={<ScanReport />} />
           <Route path="compare" element={<CompareScans />} />
           <Route path="scans" element={<AllScans />} />
+          <Route path="launch" element={<LaunchScan />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom"
-import { Shield, LayoutDashboard, History, Settings, Moon, Sun } from "lucide-react"
+import { Shield, LayoutDashboard, History, Settings, Moon, Sun, Rocket } from "lucide-react"
 import { useTheme } from "../theme-provider"
 import { cn } from "@/lib/utils"
 
@@ -9,6 +9,7 @@ export function Sidebar() {
 
     const links = [
         { name: "Dashboard", href: "/", icon: LayoutDashboard },
+        { name: "Launch Scan", href: "/launch", icon: Rocket },
         { name: "All Scans", href: "/scans", icon: History },
         { name: "Settings", href: "/settings", icon: Settings },
     ]

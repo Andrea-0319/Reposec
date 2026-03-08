@@ -27,8 +27,14 @@ The system uses a flexible pipeline orchestrated by LangGraph:
 python -m venv venv
 venv\Scripts\activate
 
-# Install dependencies
+# Install backend dependencies
 pip install -r requirements.txt
+
+# Install frontend dependencies and build
+cd frontend
+npm install
+npm run build
+cd ..
 
 # Copy the environment file template
 copy .env.example .env
@@ -63,11 +69,14 @@ python main.py "C:\path\to\your\repo" --copy-report
 
 ## Interactive Dashboard
 
-The system includes a FastAPI-powered interactive web dashboard accessible at `http://localhost:8000` (by default). The dashboard allows you to:
+The system includes a modern Interactive Web Dashboard built with **React**, **Vite**, **Tailwind CSS**, and **recharts**.
+It is accessible at `http://localhost:8000` (by default) once the backend FastAPI server is running. The dashboard allows you to:
 - Browse all analyzed projects and their historical scan timelines.
-- View detailed scan reports with severity distribution charts (Chart.js) and filterable findings.
+- View detailed scan reports with severity distribution charts and filterable findings.
 - Compare two different scans to see exactly what issues were introduced (new), fixed (resolved), or remained unchanged.
-- Launch new scans directly from the browser UI with live status polling.
+- Launch new scans directly from the browser UI with live status polling (seeing the execution logs right from the terminal).
+
+*Note: You must build the frontend (`npm run build` inside the `frontend/` directory) before FastAPI can serve the dashboard!*
 
 ## Testing
 

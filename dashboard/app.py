@@ -77,6 +77,31 @@ async def api_projects():
     return db.get_projects(Config.DB_PATH)
 
 
+@app.delete("/api/projects/{project_id}")
+async def api_delete_project(project_id: int):
+    """Delete a project and all its scans from DB and filesystem."""
+    scans = db.get_scans(project_id, Config.DB_PATH)
+    
+    for scan in scans:
+        if scan["id"] in _running_scans:
+            raise HTTPException(400, "Cannot delete project with a running scan")
+            
+    success = db.delete_project(project_id, Config.DB_PATH)
+    if not success:
+        raise HTTPException(404, "Project not found or failed to delete")
+        
+    import shutil
+    for scan in scans:
+        scan_dir = Path(scan["scan_dir"])
+        if scan_dir.exists() and scan_dir.is_dir():
+            try:
+                shutil.rmtree(scan_dir, ignore_errors=True)
+            except Exception as e:
+                print(f"Failed to delete scan directory {scan_dir}: {e}")
+                
+    return {"status": "deleted", "project_id": project_id}
+
+
 # ---------------------------------------------------------------------------
 # API: Scans
 # ---------------------------------------------------------------------------
@@ -118,6 +143,34 @@ async def api_scan_status(scan_id: int):
             del _running_scans[scan_id]
 
     return {"status": scan["status"], "scan_id": scan_id}
+
+
+@app.delete("/api/scans/{scan_id}")
+async def api_delete_scan(scan_id: int):
+    """Delete a scan from DB and filesystem."""
+    scan = db.get_scan_detail(scan_id, Config.DB_PATH)
+    if not scan:
+        raise HTTPException(404, "Scan not found")
+        
+    if scan_id in _running_scans:
+        raise HTTPException(400, "Cannot delete a running scan")
+        
+    # Remove from DB
+    success = db.delete_scan(scan_id, Config.DB_PATH)
+    if not success:
+        raise HTTPException(500, "Failed to delete scan from database")
+        
+    # Remove from filesystem
+    scan_dir = Path(scan["scan_dir"])
+    if scan_dir.exists() and scan_dir.is_dir():
+        import shutil
+        try:
+            shutil.rmtree(scan_dir, ignore_errors=True)
+        except Exception as e:
+            # We don't fail the request if file deletion fails but DB succeeded
+            print(f"Failed to delete scan directory {scan_dir}: {e}")
+            
+    return {"status": "deleted", "scan_id": scan_id}
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +235,7 @@ async def api_launch_scan(req: LaunchRequest):
         try:
             proc = subprocess.Popen(
                 cmd, cwd=str(Config.BASE_PATH),
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                stdout=sys.stdout, stderr=sys.stderr,
             )
             _running_scans[scan_id] = {
                 "process": proc,

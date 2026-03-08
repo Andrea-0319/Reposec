@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
-import { History, Search, Filter, ShieldCheck, ShieldAlert, Terminal, FileCode2 } from "lucide-react"
+import { History, Search, Filter, ShieldCheck, ShieldAlert, Terminal, FileCode2, Trash2 } from "lucide-react"
 
 interface Project {
     id: number
@@ -19,6 +19,8 @@ interface Project {
 export default function AllScans() {
     const [projects, setProjects] = useState<Project[]>([])
     const [loading, setLoading] = useState(true)
+    const [searchQuery, setSearchQuery] = useState("")
+    const [statusFilter, setStatusFilter] = useState("all")
 
     useEffect(() => {
         async function fetchData() {
@@ -43,7 +45,31 @@ export default function AllScans() {
         fetchData()
     }, [])
 
-    const scans = projects.filter(p => p.last_scan_id !== null)
+    const scans = projects
+        .filter(p => p.last_scan_id !== null)
+        .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.repo_path.toLowerCase().includes(searchQuery.toLowerCase()))
+        .filter(p => statusFilter === "all" ? true : p.last_scan_status === statusFilter)
+
+    const handleDelete = async (scanId: number) => {
+        if (!confirm("Are you sure you want to delete this scan? This action cannot be undone.")) return;
+
+        try {
+            const res = await fetch(`http://localhost:8000/api/scans/${scanId}`, {
+                method: "DELETE"
+            });
+
+            if (res.ok) {
+                // Remove the scan from the UI temporarily or trigger a refetch
+                setProjects(prev => prev.filter(p => p.last_scan_id !== scanId));
+            } else {
+                const data = await res.json();
+                alert(data.detail || "Failed to delete scan");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error deleting scan");
+        }
+    }
 
     return (
         <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500 max-w-7xl mx-auto pb-12">
@@ -64,13 +90,23 @@ export default function AllScans() {
                         type="text"
                         placeholder="Search projects..."
                         className="w-full bg-background border rounded-md pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                        disabled
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
-                <button className="flex items-center gap-2 border bg-card text-foreground hover:bg-muted py-2 px-4 rounded-md text-sm font-medium transition-colors" disabled>
-                    <Filter className="size-4" />
-                    Filter
-                </button>
+                <div className="relative border rounded-md bg-card focus-within:ring-2 focus-within:ring-primary/50 flex">
+                    <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                    <select
+                        className="appearance-none bg-transparent hover:bg-muted py-2 pl-9 pr-8 text-sm font-medium focus:outline-none cursor-pointer rounded-md"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                    >
+                        <option value="all">All Statuses</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                        <option value="running">Running</option>
+                    </select>
+                </div>
             </div>
 
             <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
@@ -136,12 +172,21 @@ export default function AllScans() {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <Link
-                                            to={`/scan/${s.last_scan_id}`}
-                                            className="text-primary hover:underline font-medium text-sm inline-flex items-center px-3 py-1.5 rounded-md hover:bg-primary/10 transition-colors"
-                                        >
-                                            View Report
-                                        </Link>
+                                        <div className="flex items-center justify-end gap-2">
+                                            <Link
+                                                to={`/scan/${s.last_scan_id}`}
+                                                className="text-primary hover:underline font-medium text-sm inline-flex items-center px-3 py-1.5 rounded-md hover:bg-primary/10 transition-colors"
+                                            >
+                                                View Report
+                                            </Link>
+                                            <button
+                                                onClick={() => handleDelete(s.last_scan_id!)}
+                                                className="text-destructive hover:bg-destructive/10 p-2 rounded-md transition-colors"
+                                                title="Delete Scan"
+                                            >
+                                                <Trash2 className="size-4" />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
