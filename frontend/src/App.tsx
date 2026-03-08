@@ -4,6 +4,8 @@ import Dashboard from "./pages/Dashboard"
 import ProjectDetail from "./pages/ProjectDetail"
 import ScanReport from "./pages/ScanReport"
 import CompareScans from "./pages/CompareScans"
+import AllScans from "./pages/AllScans"
+import Settings from "./pages/Settings"
 
 function App() {
   return (
@@ -14,6 +16,8 @@ function App() {
           <Route path="project/:id" element={<ProjectDetail />} />
           <Route path="scan/:id" element={<ScanReport />} />
           <Route path="compare" element={<CompareScans />} />
+          <Route path="scans" element={<AllScans />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
     </Router>
