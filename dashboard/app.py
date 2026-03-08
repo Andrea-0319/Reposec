@@ -22,9 +22,9 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # Project-level imports
@@ -38,13 +38,18 @@ from dashboard.report_parser import parse_report, extract_severity_counts
 # ---------------------------------------------------------------------------
 app = FastAPI(title="Security Review Dashboard", version="1.0.0")
 
+# Allow CORS for local dev with Vite matching
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Paths
 _DASHBOARD_DIR = Path(__file__).parent
-_TEMPLATES_DIR = _DASHBOARD_DIR / "templates"
-_STATIC_DIR = _DASHBOARD_DIR / "static"
-
-# Serve static assets (CSS/JS)
-app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+_FRONTEND_DIST = _DASHBOARD_DIR.parent / "frontend" / "dist"
 
 # Track running scans: scan_id → subprocess info
 _running_scans: dict[int, dict] = {}
@@ -59,35 +64,8 @@ def _startup() -> None:
 
 
 # ---------------------------------------------------------------------------
-# HTML page routes
+# Note: HTML templates have been replaced by the SPA frontend.
 # ---------------------------------------------------------------------------
-def _serve_template(filename: str) -> HTMLResponse:
-    """Read and serve an HTML template."""
-    path = _TEMPLATES_DIR / filename
-    if not path.exists():
-        raise HTTPException(404, f"Template {filename} not found")
-    return HTMLResponse(path.read_text(encoding="utf-8"))
-
-
-@app.get("/", response_class=HTMLResponse)
-async def page_index():
-    return _serve_template("index.html")
-
-@app.get("/project/{project_id}", response_class=HTMLResponse)
-async def page_project(project_id: int):
-    return _serve_template("project.html")
-
-@app.get("/scan/{scan_id}", response_class=HTMLResponse)
-async def page_report(scan_id: int):
-    return _serve_template("report.html")
-
-@app.get("/compare", response_class=HTMLResponse)
-async def page_compare():
-    return _serve_template("compare.html")
-
-@app.get("/launch", response_class=HTMLResponse)
-async def page_launch():
-    return _serve_template("launch.html")
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +229,25 @@ def _finalize_scan(scan_id: int, proc_info: dict) -> None:
     else:
         db.update_scan_status(scan_id, "failed", duration, Config.DB_PATH)
 
+
+# ---------------------------------------------------------------------------
+# SPA Fallback Route
+# ---------------------------------------------------------------------------
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    """Serve built Vite frontend; fallback to index.html for client-side routing."""
+    # Previene wildcard overriding sulle api non trovate
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="API route not found")
+
+    full_requested_path = _FRONTEND_DIST / full_path
+    if full_requested_path.is_file():
+        return FileResponse(full_requested_path)
+    
+    index_file = _FRONTEND_DIST / "index.html"
+    if not index_file.exists():
+        raise HTTPException(status_code=404, detail="Frontend is not built. Run 'npm run build' inside frontend directory.")
+    return FileResponse(index_file)
 
 # ---------------------------------------------------------------------------
 # Run directly: python -m dashboard.app
