@@ -58,3 +58,7 @@ class Config:
     AGENTS_PATH: Path = BASE_PATH / "agents"
     KNOWLEDGE_PATH: Path = BASE_PATH / "knowledge"
     STATE_PATH: Path = BASE_PATH / "state"
+
+    # Dashboard configuration
+    DASHBOARD_PORT: int = _safe_int(os.getenv("DASHBOARD_PORT", "8000"), 8000)
+    DB_PATH: Path = STATE_PATH / "security_review.db"

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Scans — Security Review Dashboard</title>
+    <meta name="description" content="Scan timeline and severity trend for a project.">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <h1><span class="brand-icon">🛡️</span> Security Review</h1>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="/" id="nav-home"><span class="nav-icon">📊</span> Projects</a>
+                <a href="/launch" id="nav-launch"><span class="nav-icon">🚀</span> New Scan</a>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="page-header">
+                <div>
+                    <div class="breadcrumb"><a href="/">Projects</a> / Project Detail</div>
+                    <h2>Scan History</h2>
+                </div>
+            </header>
+            <section class="page-body" id="app-root"></section>
+        </main>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Extract project ID from URL: /project/{id}
+            const parts = window.location.pathname.split('/');
+            const projectId = parseInt(parts[parts.length - 1]);
+            if (projectId) {
+                renderProjectDetail(document.getElementById('app-root'), projectId);
+            }
+        });
+    </script>
+</body>
+
+</html>

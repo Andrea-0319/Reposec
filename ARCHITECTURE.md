@@ -13,7 +13,9 @@ At its core, the system acts as a multi-step pipeline built around a shared stat
 2. An initial exploring agent (Ingest) maps the codebase.
 3. Multiple specialized agents run (concurrently or sequentially) to analyze specific vulnerability domains.
 4. A compliance agent assesses overall adherence to security frameworks (OWASP, Secure by Design).
-5. An aggregator agent synthesizes all findings into a final, unified report.
+5. An aggregator agent synthesizes all findings into a final, unified report (`security_report.md`).
+6. The CLI parses the final Markdown report and persists structured findings into a local SQLite database.
+7. An Interactive Web Dashboard visually presents the historical scans, severity trends, and remediation instructions.
 
 ---
 
@@ -114,3 +116,16 @@ Analyzing untrusted or potentially malicious code requires strict guardrails.
 
 3. **I/O Routing**:
    Agent inputs and outputs are strictly routed through `orchestrator/agent_config.py`. An agent only receives the intermediate files (e.g., `fingerprint.md`, `findings_backend.md`) it explicitly needs to prevent context window bloat and cross-contamination of tasks.
+
+---
+
+## 6. Interactive Dashboard
+
+To make the multi-agent outputs manageable and track project security postures over time, the system includes an offline Web Dashboard composed of three layers:
+
+1. **Data Layer (`dashboard/db.py`)**: 
+   A relational SQLite database (`state/security_review.db`) holding `projects`, `scans`, and structured `findings`. When an LLM finishes generating the Markdown report, `dashboard/report_parser.py` extracts the severity counts (Critical, High, Medium, Low) and finding details via regex and saves them into the DB.
+2. **Backend (`dashboard/app.py`)**: 
+   A fast, synchronous/asynchronous FastAPI server providing REST endpoints (e.g., `/api/projects`, `/api/scans/{id}`). It also controls a background thread to safely trigger new LangGraph executions via `subprocess` from the browser UI while allowing status polling.
+3. **Frontend (`dashboard/static`, `dashboard/templates`)**: 
+   A vanilla HTML/JS/CSS client focusing on speed and zero build-steps. Uses **Chart.js** to render severity distribution donuts and longitudinal trend lines to track resolving/introducing of vulnerabilities across successive scans. Includes a diff engine endpoint to natively compare scans (added, resolved, unchanged).

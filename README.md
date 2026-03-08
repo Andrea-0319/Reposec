@@ -2,7 +2,7 @@
 
 An automated, locally-run, multi-agent security review system powered by OpenCode and LangGraph.
 
-This platform sequentially routes a targeted codebase through multiple specialized LLM agents, generating a comprehensive `security_report.md` for your repository without sending data out through non-approved/paid APIs.
+This platform sequentially routes a targeted codebase through multiple specialized LLM agents, generating a comprehensive `security_report.md` for your repository without sending data out through non-approved/paid APIs. It also includes an interactive web Dashboard to visualize, navigate, and compare scan results over time.
 
 ## Architecture
 
@@ -39,11 +39,17 @@ copy .env.example .env
 Analyze a local repository by providing its path to `main.py`.
 
 ```bash
-# Basic usage
+# Basic usage (opens dashboard automatically after scan)
 python main.py "C:\path\to\your\repo"
 
 # Run with up to 4 parallel agents (faster execution)
 python main.py "C:\path\to\your\repo" --parallel 4
+
+# Run scan but skip opening the dashboard automatically
+python main.py "C:\path\to\your\repo" --no-dashboard
+
+# Start the dashboard server only (no scan launched)
+python main.py --dashboard
 
 # Use the Python SDK backend connected to a remote OpenCode server
 python main.py "C:\path\to\your\repo" --backend sdk --sdk-url "http://192.168.1.100:54321"
@@ -54,6 +60,14 @@ python main.py "C:\path\to\your\repo" --model "opencode/glm-5-free"
 # Copy the report into the analyzed repo root
 python main.py "C:\path\to\your\repo" --copy-report
 ```
+
+## Interactive Dashboard
+
+The system includes a FastAPI-powered interactive web dashboard accessible at `http://localhost:8000` (by default). The dashboard allows you to:
+- Browse all analyzed projects and their historical scan timelines.
+- View detailed scan reports with severity distribution charts (Chart.js) and filterable findings.
+- Compare two different scans to see exactly what issues were introduced (new), fixed (resolved), or remained unchanged.
+- Launch new scans directly from the browser UI with live status polling.
 
 ## Testing
 
@@ -80,3 +94,4 @@ Intermediate outputs (findings, fingerprint) and agent execution logs are stored
 - **Safety & Guardrails**: Sandboxed execution, prompt sanitization, input validation.
 - **Configurable Parallelism**: Agents can run independently with fan-out/fan-in parallel topologies (via `--parallel N`).
 - **Flexible Backend**: Supports both local CLI execution and remote Python SDK connections to OpenCode instances.
+- **Persistent Storage**: All scans are saved in a local SQLite database (`state/security_review.db`) for trend tracking.

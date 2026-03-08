@@ -2,3 +2,8 @@ langgraph==1.0.7
 python-dotenv==1.2.1
 # Optional: richiesto solo con --backend sdk
 # opencode-ai
+
+# Dashboard dependencies
+fastapi
+uvicorn[standard]
+jinja2
