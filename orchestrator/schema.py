@@ -36,6 +36,7 @@ class SecurityState(TypedDict):
     scan_output_dir: str                                    # Directory to save intermediate and final results
     model_override: Optional[str]                           # Model override from CLI (avoids Config mutation)
     sdk_url: Optional[str]                                  # SDK server URL override (es. http://remote:54321)
+    timeout_override: Optional[int]                         # Timeout override in seconds for each agent call
     fingerprint: str                                        # Markdown string of the tech footprint
     file_manifest: str                                      # List of relevant source files (markdown)
     current_agent: Annotated[str, _last_value]               # Agent currently executing (last-writer-wins in parallel)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useParams, Link } from "react-router-dom"
-import { ArrowLeft, History, ShieldAlert, ShieldCheck, PlayCircle, Loader2, Trash2 } from "lucide-react"
+import { ArrowLeft, History, ShieldAlert, ShieldCheck, PlayCircle, Loader2, Trash2, GitCompareArrows } from "lucide-react"
 import {
     LineChart,
     Line,
@@ -12,6 +12,7 @@ import {
     Legend
 } from "recharts"
 import { cn } from "@/lib/utils"
+import { apiUrl } from "@/lib/api"
 
 interface Scan {
     id: number
@@ -43,7 +44,7 @@ export default function ProjectDetail() {
         async function fetchData() {
             try {
                 // Fetch specific project scans
-                const scansRes = await fetch(`http://localhost:8000/api/projects/${id}/scans`)
+                const scansRes = await fetch(apiUrl(`/api/projects/${id}/scans`))
                 if (scansRes.ok) {
                     const scansData: Scan[] = await scansRes.json()
                     // Sort ascending for chart (oldest to newest)
@@ -54,7 +55,7 @@ export default function ProjectDetail() {
                 }
 
                 // Fetch all projects to find the name (workaround short of a single GET /api/projects/:id)
-                const projRes = await fetch(`http://localhost:8000/api/projects`)
+                const projRes = await fetch(apiUrl("/api/projects"))
                 if (projRes.ok) {
                     const projs = await projRes.json()
                     const p = projs.find((x: any) => x.id === Number(id))
@@ -88,7 +89,7 @@ export default function ProjectDetail() {
         if (!confirm("Are you sure you want to delete this scan? This action cannot be undone.")) return;
 
         try {
-            const res = await fetch(`http://localhost:8000/api/scans/${scanId}`, {
+            const res = await fetch(apiUrl(`/api/scans/${scanId}`), {
                 method: "DELETE"
             });
 
@@ -107,11 +108,13 @@ export default function ProjectDetail() {
 
     // Reverse back for the table (newest first)
     const displayScans = [...scans].reverse()
+    const latestScan = displayScans[0] ?? null
+    const previousScan = displayScans[1] ?? null
 
     return (
         <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500 max-w-7xl mx-auto">
             <div className="flex items-center gap-4 border-b pb-6">
-                <Link to="/" className="p-2 hover:bg-muted rounded-full transition-colors">
+                <Link to="/" aria-label="Back to dashboard" className="p-2 hover:bg-muted rounded-full transition-colors">
                     <ArrowLeft className="size-5" />
                 </Link>
                 <div>
@@ -152,11 +155,11 @@ export default function ProjectDetail() {
                                         tickFormatter={(value) => `${value}`}
                                     />
                                     <Tooltip
-                                        contentStyle={{ backgroundColor: "var(--color-bg-card)", borderRadius: "8px", borderColor: "var(--color-border)" }}
-                                        itemStyle={{ color: "var(--color-foreground)" }}
+                                        contentStyle={{ backgroundColor: "hsl(var(--card))", borderRadius: "8px", borderColor: "hsl(var(--border))" }}
+                                        itemStyle={{ color: "hsl(var(--foreground))" }}
                                     />
                                     <Legend />
-                                    <Line type="monotone" dataKey="Total" stroke="#8884d8" strokeWidth={3} activeDot={{ r: 8 }} />
+                                    <Line type="monotone" dataKey="Total" stroke="#00E5CC" strokeWidth={3} activeDot={{ r: 8 }} />
                                     <Line type="monotone" dataKey="Critical" stroke="#ef4444" strokeWidth={2} />
                                     <Line type="monotone" dataKey="High" stroke="#f97316" strokeWidth={2} />
                                 </LineChart>
@@ -195,8 +198,19 @@ export default function ProjectDetail() {
                         <PlayCircle className="size-4" />
                         Launch New Scan
                     </Link>
+                    {latestScan && (
+                        <Link
+                            to={previousScan
+                                ? `/compare?baseline=${previousScan.id}&target=${latestScan.id}`
+                                : `/compare?target=${latestScan.id}`}
+                            className="mt-3 flex items-center justify-center gap-2 w-full rounded-md border border-teal-500/20 bg-teal-500/8 py-2.5 font-medium text-teal-300 transition-colors hover:bg-teal-500/12"
+                        >
+                            <GitCompareArrows className="size-4" />
+                            Compare Latest Scans
+                        </Link>
+                    )}
                     <p className="text-xs text-center text-muted-foreground mt-3">
-                        Launch a new scan for this repository using the dashboard.
+                        Launch a new scan for this repository or compare it with a previous snapshot.
                     </p>
                 </div>
             </div>
@@ -217,7 +231,10 @@ export default function ProjectDetail() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
-                                {displayScans.map((scan) => (
+                                {displayScans.map((scan, index) => {
+                                    const olderScan = displayScans[index + 1]
+
+                                    return (
                                     <tr key={scan.id} className="hover:bg-muted/30 transition-colors group">
                                         <td className="px-6 py-4 font-medium">
                                             {new Date(scan.started_at).toLocaleString()}
@@ -243,15 +260,26 @@ export default function ProjectDetail() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <div className="flex items-center justify-end gap-2 opacity-100 sm:opacity-80 sm:group-hover:opacity-100 transition-opacity">
                                                 <Link
                                                     to={`/scan/${scan.id}`}
                                                     className="text-primary hover:underline font-medium text-sm inline-flex items-center"
                                                 >
                                                     View Details &rarr;
                                                 </Link>
+                                                <Link
+                                                    to={olderScan
+                                                        ? `/compare?baseline=${olderScan.id}&target=${scan.id}`
+                                                        : `/compare?target=${scan.id}`}
+                                                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-teal-300 transition-colors hover:bg-teal-500/10"
+                                                >
+                                                    <GitCompareArrows className="size-4" />
+                                                    Compare
+                                                </Link>
                                                 <button
                                                     onClick={() => handleDelete(scan.id)}
+                                                    type="button"
+                                                    aria-label={`Delete scan ${scan.id}`}
                                                     className="text-destructive hover:bg-destructive/10 p-2 rounded-md transition-colors"
                                                     title="Delete Scan"
                                                 >
@@ -260,7 +288,8 @@ export default function ProjectDetail() {
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
+                                    )
+                                })}
                                 {displayScans.length === 0 && (
                                     <tr>
                                         <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">

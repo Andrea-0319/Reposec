@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 import threading
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -32,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import Config
 from dashboard import db
 from dashboard.report_parser import parse_report, extract_severity_counts
+from orchestrator.opencode_client import find_opencode_executable, _validate_model_name
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -53,6 +55,126 @@ _FRONTEND_DIST = _DASHBOARD_DIR.parent / "frontend" / "dist"
 
 # Track running scans: scan_id → subprocess info
 _running_scans: dict[int, dict] = {}
+_MODELS_CACHE_TTL_SECONDS = 60
+_models_cache = {
+    "models": [],
+    "error": None,
+    "installed": False,
+    "executable": None,
+    "ts": 0.0,
+}
+_models_cache_lock = threading.Lock()
+_SCAN_ERROR_FILE = "startup_error.txt"
+
+
+def _sanitize_repo_path(raw_path: str) -> str:
+    """Trim whitespace and surrounding quotes from a user-supplied repository path."""
+    return raw_path.strip().strip('"').strip("'")
+
+
+def _read_scan_error(scan_dir: Path) -> Optional[str]:
+    """Return a persisted scan bootstrap error, if present."""
+    error_file = scan_dir / _SCAN_ERROR_FILE
+    if not error_file.exists() or not error_file.is_file():
+        return None
+
+    try:
+        return error_file.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
+
+def _humanize_model_name(model_id: str) -> str:
+    """Generate a readable label from an OpenCode model identifier."""
+    tail = model_id.split("/", 1)[-1].replace("_", "-")
+    parts = [part for part in tail.split("-") if part]
+    if not parts:
+        return model_id
+
+    return " ".join(
+        part.upper() if part.isupper() else part.capitalize() if part.isalpha() else part
+        for part in parts
+    )
+
+
+def _extract_model_id_from_line(line: str) -> Optional[str]:
+    """Extract a model identifier from a plain-text or table row."""
+    cleaned = re.sub(r"\x1b\[[0-9;]*m", "", line).strip()
+    if not cleaned or set(cleaned) <= {"-", "=", "+", "|", " "}:
+        return None
+
+    candidate_tokens: list[str] = []
+
+    if "|" in cleaned:
+        candidate_tokens.extend(cell.strip() for cell in cleaned.split("|") if cell.strip())
+    else:
+        candidate_tokens.append(cleaned.lstrip("-*• "))
+
+    ignored = {"model", "models", "id", "name", "provider", "available", "installed"}
+    for token in candidate_tokens:
+        first_chunk = re.split(r"\s{2,}|\s+-\s+|\t", token, maxsplit=1)[0].strip()
+        if not first_chunk:
+            continue
+        lowered = first_chunk.lower()
+        if lowered in ignored:
+            continue
+        try:
+            return _validate_model_name(first_chunk)
+        except ValueError:
+            continue
+
+    return None
+
+
+def _load_opencode_models(force_refresh: bool = False) -> dict:
+    """Return cached OpenCode model metadata with TTL-based refresh."""
+    now = time.time()
+    with _models_cache_lock:
+        if not force_refresh and now - _models_cache["ts"] < _MODELS_CACHE_TTL_SECONDS:
+            return dict(_models_cache)
+
+        models: list[dict[str, str]] = []
+        error: Optional[str] = None
+        installed = False
+        executable: Optional[str] = None
+
+        try:
+            executable = find_opencode_executable()
+            installed = True
+            completed = subprocess.run(
+                [executable, "models"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            stdout = completed.stdout or ""
+            stderr = (completed.stderr or "").strip()
+
+            if completed.returncode != 0:
+                error = stderr or "Failed to load models from OpenCode."
+            else:
+                seen: set[str] = set()
+                for line in stdout.splitlines():
+                    model_id = _extract_model_id_from_line(line)
+                    if model_id and model_id not in seen:
+                        seen.add(model_id)
+                        models.append({"id": model_id, "name": _humanize_model_name(model_id)})
+        except FileNotFoundError as exc:
+            error = str(exc)
+        except subprocess.TimeoutExpired:
+            error = "Timed out while querying OpenCode models."
+        except Exception as exc:
+            error = f"Unable to query OpenCode models: {exc}"
+
+        _models_cache.update({
+            "models": models,
+            "error": error,
+            "installed": installed,
+            "executable": executable,
+            "ts": now,
+        })
+        return dict(_models_cache)
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +197,39 @@ def _startup() -> None:
 async def api_projects():
     """List all projects with latest scan summary."""
     return db.get_projects(Config.DB_PATH)
+
+
+@app.get("/api/health")
+async def api_health():
+    """Basic API healthcheck used by the frontend settings page."""
+    return {
+        "status": "ok",
+        "version": app.version,
+        "timestamp": int(time.time()),
+    }
+
+
+@app.get("/api/health/opencode")
+async def api_health_opencode():
+    """Report OpenCode availability and currently discoverable models."""
+    data = _load_opencode_models()
+    return {
+        "installed": data["installed"],
+        "executable": data["executable"],
+        "model_count": len(data["models"]),
+        "error": data["error"],
+        "version": app.version,
+    }
+
+
+@app.get("/api/models")
+async def api_models():
+    """Return the available OpenCode models discovered from the local CLI."""
+    data = _load_opencode_models()
+    return {
+        "models": data["models"],
+        "error": data["error"],
+    }
 
 
 @app.delete("/api/projects/{project_id}")
@@ -121,7 +276,11 @@ async def api_scan_detail(scan_id: int):
     if not scan:
         raise HTTPException(404, "Scan not found")
     findings = db.get_findings(scan_id, Config.DB_PATH)
-    return {"scan": scan, "findings": findings}
+    return {
+        "scan": scan,
+        "findings": findings,
+        "error": _read_scan_error(Path(scan["scan_dir"])),
+    }
 
 
 @app.get("/api/scans/{scan_id}/status")
@@ -136,13 +295,18 @@ async def api_scan_status(scan_id: int):
         proc_info = _running_scans[scan_id]
         proc = proc_info.get("process")
         if proc and proc.poll() is None:
-            return {"status": "running", "scan_id": scan_id}
+            return {"status": "running", "scan_id": scan_id, "error": None}
         else:
             # Process finished — parse results and update DB
             _finalize_scan(scan_id, proc_info)
             del _running_scans[scan_id]
+            scan = db.get_scan_detail(scan_id, Config.DB_PATH)
 
-    return {"status": scan["status"], "scan_id": scan_id}
+    return {
+        "status": scan["status"],
+        "scan_id": scan_id,
+        "error": _read_scan_error(Path(scan["scan_dir"])),
+    }
 
 
 @app.delete("/api/scans/{scan_id}")
@@ -192,18 +356,22 @@ class LaunchRequest(BaseModel):
     repo_path: str
     model: Optional[str] = None
     backend: Optional[str] = None
+    sdk_url: Optional[str] = None
+    timeout: Optional[int] = None
     parallel: int = 1
 
 
 @app.post("/api/scans/launch")
 async def api_launch_scan(req: LaunchRequest):
     """Launch a new security scan as a subprocess."""
+    req.repo_path = _sanitize_repo_path(req.repo_path)
     repo = Path(req.repo_path).resolve()
     if not repo.exists() or not repo.is_dir():
         raise HTTPException(400, f"Invalid repo path: {req.repo_path}")
 
     # Clamp parallel to valid range
     parallel = max(1, min(req.parallel, 4))
+    timeout = max(1, req.timeout) if req.timeout else None
 
     # Create project entry
     project_id = db.upsert_project(
@@ -224,41 +392,51 @@ async def api_launch_scan(req: LaunchRequest):
 
     # Build subprocess command
     cmd = [sys.executable, str(Config.BASE_PATH / "main.py"), str(repo),
-           "--parallel", str(parallel)]
+           "--parallel", str(parallel),
+           "--scan-dir", str(scan_dir),
+           "--scan-id", str(scan_id),
+           "--no-dashboard"]
     if req.model:
         cmd.extend(["--model", req.model])
     if req.backend:
         cmd.extend(["--backend", req.backend])
+    if req.sdk_url:
+        cmd.extend(["--sdk-url", req.sdk_url])
+    if timeout:
+        cmd.extend(["--timeout", str(timeout)])
 
     # Launch in background thread (non-blocking)
+    # Pre-populate tracking dict *before* starting the thread to avoid a race
+    start_ts = time.time()
+    _running_scans[scan_id] = {"scan_dir": str(scan_dir), "start_time": start_ts}
+
     def _run():
         try:
             proc = subprocess.Popen(
                 cmd, cwd=str(Config.BASE_PATH),
                 stdout=sys.stdout, stderr=sys.stderr,
             )
-            _running_scans[scan_id] = {
-                "process": proc,
-                "scan_dir": str(scan_dir),
-                "start_time": time.time(),
-            }
+            _running_scans[scan_id]["process"] = proc
             proc.wait()  # Block this thread until complete
             _finalize_scan(scan_id, _running_scans.get(scan_id, {}))
             _running_scans.pop(scan_id, None)
         except Exception as e:
             db.update_scan_status(scan_id, "failed", db_path=Config.DB_PATH)
+            _running_scans.pop(scan_id, None)
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
-
-    # Return immediately — frontend will poll status
-    _running_scans[scan_id] = {"scan_dir": str(scan_dir), "start_time": time.time()}
 
     return {"scan_id": scan_id, "status": "running"}
 
 
 def _finalize_scan(scan_id: int, proc_info: dict) -> None:
-    """Parse the completed scan's report and update DB."""
+    """Safety-net finalizer: only acts if main.py hasn't already persisted."""
+    # Check current status — if main.py already updated it, skip.
+    existing = db.get_scan_detail(scan_id, Config.DB_PATH)
+    if existing and existing.get("status") == "completed":
+        return  # main.py already persisted successfully
+
     scan_dir = Path(proc_info.get("scan_dir", ""))
     report_path = scan_dir / "security_report.md"
     duration = time.time() - proc_info.get("start_time", time.time())
@@ -278,9 +456,13 @@ def _finalize_scan(scan_id: int, proc_info: dict) -> None:
         if findings_dicts:
             db.insert_findings(scan_id, findings_dicts, Config.DB_PATH)
 
-        db.update_scan_status(scan_id, "completed", duration, Config.DB_PATH)
+        db.update_scan_status(scan_id, "completed", duration,
+                              total_findings=len(report.findings),
+                              critical=counts["CRITICAL"], high=counts["HIGH"],
+                              medium=counts["MEDIUM"], low=counts["LOW"],
+                              db_path=Config.DB_PATH)
     else:
-        db.update_scan_status(scan_id, "failed", duration, Config.DB_PATH)
+        db.update_scan_status(scan_id, "failed", duration, db_path=Config.DB_PATH)
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Shield, ShieldAlert, ShieldCheck, Terminal, AlertCircle, Trash2 } from "lucide-react"
 import { Link } from "react-router-dom"
 import { cn } from "@/lib/utils"
+import { apiUrl } from "@/lib/api"
 
 interface Project {
     id: number
@@ -26,7 +27,7 @@ export default function Dashboard() {
     useEffect(() => {
         async function fetchProjects() {
             try {
-                const response = await fetch("http://localhost:8000/api/projects")
+                const response = await fetch(apiUrl("/api/projects"))
                 if (!response.ok) {
                     throw new Error("Failed to fetch projects")
                 }
@@ -57,13 +58,19 @@ export default function Dashboard() {
         return <AlertCircle className="size-5 text-muted-foreground" />
     }
 
+    function getRiskAccent(project: Project) {
+        if ((project.critical ?? 0) > 0) return "bg-destructive"
+        if ((project.high ?? 0) > 0) return "bg-orange-500"
+        return "bg-teal-400"
+    }
+
     const handleDeleteProject = async (e: React.MouseEvent, projectId: number) => {
         e.preventDefault()
         e.stopPropagation()
         if (!confirm("Are you sure you want to delete this project? This will also permanently delete all its scans and findings.")) return;
 
         try {
-            const res = await fetch(`http://localhost:8000/api/projects/${projectId}`, {
+            const res = await fetch(apiUrl(`/api/projects/${projectId}`), {
                 method: "DELETE"
             });
             if (res.ok) {
@@ -107,6 +114,12 @@ export default function Dashboard() {
                     <p className="text-sm text-muted-foreground mt-1 max-w-sm">
                         Start a scan to populate this dashboard using the launch tab or CLI.
                     </p>
+                    <Link
+                        to="/launch"
+                        className="mt-6 inline-flex items-center rounded-full border border-teal-500/30 bg-teal-500/10 px-4 py-2 text-sm font-semibold text-teal-400 transition-colors hover:bg-teal-500/15"
+                    >
+                        Launch your first scan →
+                    </Link>
                 </div>
             ) : (
                 <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -116,6 +129,7 @@ export default function Dashboard() {
                             to={`/project/${project.id}`}
                             className="group rounded-xl border bg-card text-card-foreground shadow-sm transition-all hover:shadow-md hover:border-primary/30 flex flex-col relative overflow-hidden"
                         >
+                            <div className={cn("h-1 w-full", getRiskAccent(project))} />
                             <div className="p-6 flex items-start justify-between">
                                 <div>
                                     <h3 className="font-semibold text-lg truncate w-[200px]" title={project.name}>
@@ -131,7 +145,9 @@ export default function Dashboard() {
                                     </div>
                                     <button
                                         onClick={(e) => handleDeleteProject(e, project.id)}
-                                        className="text-destructive hover:bg-destructive/10 p-1 rounded-md transition-colors opacity-0 group-hover:opacity-100"
+                                        type="button"
+                                        aria-label={`Delete project ${project.name}`}
+                                        className="text-destructive hover:bg-destructive/10 p-1 rounded-md transition-colors opacity-70 hover:opacity-100"
                                         title="Delete Project"
                                     >
                                         <Trash2 className="size-4" />
@@ -161,6 +177,9 @@ export default function Dashboard() {
                                     </span>
                                     <span className="bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20 px-2 py-1 rounded font-semibold">
                                         {project.medium ?? 0} Medium
+                                    </span>
+                                    <span className="bg-blue-500/10 text-blue-500 border border-blue-500/20 px-2 py-1 rounded font-semibold">
+                                        {project.low ?? 0} Low
                                     </span>
                                 </div>
                             </div>

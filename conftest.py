@@ -16,6 +16,7 @@ def fake_state(tmp_path: Path) -> dict:
         "scan_output_dir": str(scan_dir),
         "model_override": None,
         "sdk_url": None,
+        "timeout_override": 1800,
         "fingerprint": "",
         "file_manifest": "",
         "current_agent": "",

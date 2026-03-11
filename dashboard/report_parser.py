@@ -52,20 +52,59 @@ _FINDING_TITLE_RE = re.compile(
     r"^\*\*\d+\.\s+(.+?)\*\*\s*$", re.MULTILINE
 )
 
-# Field extractors inside a finding block
-_FIELD_RE = {
-    "severity":    re.compile(r"\*\*Severity\*\*:\s*(.+)", re.IGNORECASE),
-    "owasp":       re.compile(r"\*\*OWASP\*\*:\s*(.+)", re.IGNORECASE),
-    "file":        re.compile(r"\*\*File\*\*:\s*(.+)", re.IGNORECASE),
-    "description": re.compile(r"\*\*Description\*\*:\s*(.+)", re.IGNORECASE),
-    "remediation": re.compile(r"\*\*Remediation\*\*:\s*(.+)", re.IGNORECASE),
+# Field labels inside a finding block
+_FIELD_LABELS = {
+    "severity": "Severity",
+    "owasp": "OWASP",
+    "file": "File",
+    "description": "Description",
+    "remediation": "Remediation",
 }
+
+_BOUNDARY_LABELS = {
+    *_FIELD_LABELS.values(),
+    "Rule Violated",
+    "Code",
+    "SbD Principle",
+}
+
+_SECTION_SEVERITY_RE = re.compile(
+    r"^###\s+(CRITICAL|HIGH|MEDIUM|LOW|INFO)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+_OWASP_FROM_TITLE_RE = re.compile(
+    r"\((A\d{2})\s*:\s*([^)]+)\)",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
 # Finding parser
 # ---------------------------------------------------------------------------
-def parse_finding(text_block: str) -> Optional[Finding]:
+def _extract_field(text_block: str, label: str) -> str:
+    """Extract a field value from a finding block, supporting multiline values."""
+    known_labels = "|".join(re.escape(boundary_label) for boundary_label in _BOUNDARY_LABELS)
+    pattern = re.compile(
+        rf"(?:^|\n)-?\s*\*\*{re.escape(label)}\*\*:\s*(.+?)"
+        rf"(?=\n(?:-?\s*\*\*(?:{known_labels})\*\*:|###\s+|\*\*\d+\.\s+.+?\*\*\s*$|---\s*$)|\Z)",
+        re.IGNORECASE | re.MULTILINE | re.DOTALL,
+    )
+    match = pattern.search(text_block)
+    return match.group(1).strip() if match else ""
+
+
+def _extract_owasp_from_title(title: str) -> str:
+    """Extract OWASP category from a finding title when embedded in parentheses."""
+    match = _OWASP_FROM_TITLE_RE.search(title)
+    if not match:
+        return ""
+
+    code, category = match.groups()
+    return f"{code.upper()} - {category.strip()}"
+
+
+def parse_finding(text_block: str, section_severity: str = "") -> Optional[Finding]:
     """Parse a single finding text block into a Finding dataclass.
 
     Returns None if the block doesn't look like a valid finding.
@@ -76,10 +115,16 @@ def parse_finding(text_block: str) -> Optional[Finding]:
 
     finding = Finding(title=title_match.group(1).strip())
 
-    for field_name, pattern in _FIELD_RE.items():
-        match = pattern.search(text_block)
-        if match:
-            setattr(finding, field_name, match.group(1).strip())
+    for field_name, label in _FIELD_LABELS.items():
+        value = _extract_field(text_block, label)
+        if value:
+            setattr(finding, field_name, value)
+
+    if not finding.severity and section_severity:
+        finding.severity = section_severity.strip().upper()
+
+    if not finding.owasp:
+        finding.owasp = _extract_owasp_from_title(finding.title)
 
     return finding
 
@@ -123,10 +168,29 @@ def parse_report(md_path: str | Path) -> ReportData:
     # Parse individual findings from the "Findings by Severity" section
     findings_text = _extract_section(text, sections[2], sections[3:])
     if findings_text:
-        # Split on the horizontal rule separator (---) between findings
-        blocks = re.split(r"\n---\n", findings_text)
-        for block in blocks:
-            finding = parse_finding(block)
+        section_headers = [
+            (match.start(), match.group(1).upper())
+            for match in _SECTION_SEVERITY_RE.finditer(findings_text)
+        ]
+        title_matches = list(_FINDING_TITLE_RE.finditer(findings_text))
+
+        for index, match in enumerate(title_matches):
+            block_start = match.start()
+            block_end = (
+                title_matches[index + 1].start()
+                if index + 1 < len(title_matches)
+                else len(findings_text)
+            )
+            block = findings_text[block_start:block_end].strip()
+
+            section_severity = ""
+            for header_position, severity in section_headers:
+                if header_position <= block_start:
+                    section_severity = severity
+                else:
+                    break
+
+            finding = parse_finding(block, section_severity=section_severity)
             if finding:
                 report.findings.append(finding)
 
@@ -135,7 +199,7 @@ def parse_report(md_path: str | Path) -> ReportData:
 
 def extract_severity_counts(findings: List[Finding]) -> Dict[str, int]:
     """Count findings per severity level."""
-    counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
     for f in findings:
         sev = f.severity.upper()
         if sev in counts:

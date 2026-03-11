@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
-import { History, Search, Filter, ShieldCheck, ShieldAlert, Terminal, FileCode2, Trash2 } from "lucide-react"
+import { History, Search, Filter, ShieldCheck, ShieldAlert, Terminal, FileCode2, Trash2, GitCompareArrows } from "lucide-react"
+import { apiUrl } from "@/lib/api"
 
 interface Project {
     id: number
@@ -25,7 +26,7 @@ export default function AllScans() {
     useEffect(() => {
         async function fetchData() {
             try {
-                const res = await fetch("http://localhost:8000/api/projects")
+                const res = await fetch(apiUrl("/api/projects"))
                 if (res.ok) {
                     const data: Project[] = await res.json()
                     // Sort by latest scan first
@@ -54,7 +55,7 @@ export default function AllScans() {
         if (!confirm("Are you sure you want to delete this scan? This action cannot be undone.")) return;
 
         try {
-            const res = await fetch(`http://localhost:8000/api/scans/${scanId}`, {
+            const res = await fetch(apiUrl(`/api/scans/${scanId}`), {
                 method: "DELETE"
             });
 
@@ -165,10 +166,22 @@ export default function AllScans() {
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center justify-center gap-2 font-medium">
-                                            <span className="text-destructive w-6 text-center">{s.critical}</span>
-                                            <span className="text-orange-500 w-6 text-center">{s.high}</span>
-                                            <span className="text-yellow-600 w-6 text-center">{s.medium}</span>
-                                            <span className="text-blue-500 w-6 text-center">{s.low}</span>
+                                            <span className="inline-flex w-9 items-center justify-center gap-1 text-destructive">
+                                                <span className="size-1.5 rounded-full bg-destructive" />
+                                                <span>{s.critical}</span>
+                                            </span>
+                                            <span className="inline-flex w-9 items-center justify-center gap-1 text-orange-500">
+                                                <span className="size-1.5 rounded-full bg-orange-500" />
+                                                <span>{s.high}</span>
+                                            </span>
+                                            <span className="inline-flex w-9 items-center justify-center gap-1 text-yellow-600">
+                                                <span className="size-1.5 rounded-full bg-yellow-500" />
+                                                <span>{s.medium}</span>
+                                            </span>
+                                            <span className="inline-flex w-9 items-center justify-center gap-1 text-blue-500">
+                                                <span className="size-1.5 rounded-full bg-blue-500" />
+                                                <span>{s.low}</span>
+                                            </span>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-right">
@@ -179,9 +192,18 @@ export default function AllScans() {
                                             >
                                                 View Report
                                             </Link>
+                                            <Link
+                                                to={`/compare?target=${s.last_scan_id}`}
+                                                className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-teal-300 transition-colors hover:bg-teal-500/10"
+                                            >
+                                                <GitCompareArrows className="size-4" />
+                                                Compare
+                                            </Link>
                                             <button
                                                 onClick={() => handleDelete(s.last_scan_id!)}
-                                                className="text-destructive hover:bg-destructive/10 p-2 rounded-md transition-colors"
+                                                type="button"
+                                                aria-label={`Delete scan ${s.last_scan_id} for ${s.name}`}
+                                                className="text-destructive hover:bg-destructive/10 p-2 rounded-md transition-colors opacity-70 hover:opacity-100"
                                                 title="Delete Scan"
                                             >
                                                 <Trash2 className="size-4" />

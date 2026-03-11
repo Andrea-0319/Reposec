@@ -51,6 +51,8 @@ class Config:
     COPY_IGNORE_PATTERNS: List[str] = [
         ".git", "node_modules", "venv", ".venv", "__pycache__", 
         ".env", ".env.local", ".env.production",
+        ".pytest_cache", ".coverage", ".agent", ".opencode",
+        "dist", "build",
     ]
     
     # Paths configuration

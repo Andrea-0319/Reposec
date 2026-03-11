@@ -68,3 +68,8 @@ class TestConfig:
         """I pattern di copia escludono .git e node_modules."""
         assert ".git" in Config.COPY_IGNORE_PATTERNS
         assert "node_modules" in Config.COPY_IGNORE_PATTERNS
+
+    def test_copy_ignore_patterns_exclude_generated_artifacts(self):
+        """I pattern di copia escludono gli artefatti locali generati dal toolchain."""
+        for pattern in (".pytest_cache", ".coverage", ".agent", ".opencode", "dist", "build"):
+            assert pattern in Config.COPY_IGNORE_PATTERNS

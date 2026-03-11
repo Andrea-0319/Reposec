@@ -27,6 +27,20 @@ def _validate_model_name(model: str) -> str:
         )
     return model
 
+
+def find_opencode_executable() -> str:
+    """Find the OpenCode executable on this system."""
+    for name in ["opencode", "opencode.exe", "opencode.cmd"]:
+        found = shutil.which(name)
+        if found:
+            log.debug("Found opencode at: %s", found)
+            return found
+
+    raise FileNotFoundError(
+        "opencode CLI not found. Install it or add it to PATH.\n"
+        "See: https://github.com/opencode-ai/opencode"
+    )
+
 # On Windows, CREATE_NEW_PROCESS_GROUP lets us kill the entire process tree.
 _IS_WINDOWS = os.name == "nt"
 
@@ -39,17 +53,8 @@ class CLIBackend(OpenCodeBackend):
         self._executable = self._find_executable()
 
     def _find_executable(self) -> str:
-        """Find the opencode executable on this system."""
-        for name in ["opencode", "opencode.exe", "opencode.cmd"]:
-            found = shutil.which(name)
-            if found:
-                log.debug("Found opencode at: %s", found)
-                return found
-
-        raise FileNotFoundError(
-            "opencode CLI not found. Install it or add it to PATH.\n"
-            "See: https://github.com/opencode-ai/opencode"
-        )
+        """Backward-compatible instance wrapper around executable discovery."""
+        return find_opencode_executable()
 
     def execute_prompt(self, prompt: str, working_dir: str, 
                        scan_output_dir: str, agent_name: str = "unknown") -> dict:

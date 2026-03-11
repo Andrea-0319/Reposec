@@ -168,13 +168,27 @@ def insert_scan(project_id: int, scan_dir: str,
 
 def update_scan_status(scan_id: int, status: str,
                        duration_seconds: Optional[float] = None,
+                       total_findings: Optional[int] = None,
+                       critical: Optional[int] = None,
+                       high: Optional[int] = None,
+                       medium: Optional[int] = None,
+                       low: Optional[int] = None,
                        db_path: Optional[Path] = None) -> None:
-    """Update a scan's status (used during in-progress → completed transitions)."""
+    """Update a scan's status and optionally its finding counts."""
     conn = _get_connection(db_path)
     try:
         conn.execute(
-            "UPDATE scans SET status = ?, duration_seconds = COALESCE(?, duration_seconds) WHERE id = ?",
-            (status, duration_seconds, scan_id),
+            """UPDATE scans
+               SET status = ?,
+                   duration_seconds = COALESCE(?, duration_seconds),
+                   total_findings   = COALESCE(?, total_findings),
+                   critical         = COALESCE(?, critical),
+                   high             = COALESCE(?, high),
+                   medium           = COALESCE(?, medium),
+                   low              = COALESCE(?, low)
+               WHERE id = ?""",
+            (status, duration_seconds, total_findings,
+             critical, high, medium, low, scan_id),
         )
         conn.commit()
     finally:

@@ -1,6 +1,7 @@
 """Node factory for LangGraph pipeline execution."""
 import re
 import logging
+import time
 from pathlib import Path
 from typing import Callable, Dict, Any
 
@@ -128,7 +129,13 @@ def create_node_wrapper(agent_name: str, prompt_file: Path) -> Callable[[Securit
     """Creates a LangGraph node function for the specific agent based on OpenCode."""
     
     def node_fn(state: SecurityState) -> Dict[str, Any]:
-        log.info(f"[{agent_name.upper()}] Starting execution...")
+        backend_type = state.get("backend_type", "cli")
+        max_parallel = state.get("max_parallel", 1)
+        timeout_override = state.get("timeout_override")
+        log.info(
+            "[%s] Starting execution | backend=%s | max_parallel=%s | timeout=%s",
+            agent_name.upper(), backend_type, max_parallel, timeout_override,
+        )
         
         # Check circuit-breaker: skip if a previous critical agent failed
         if state.get("stop_requested", False):
@@ -149,9 +156,21 @@ def create_node_wrapper(agent_name: str, prompt_file: Path) -> Callable[[Securit
         
         # Use model_override from state if provided (avoids mutating Config singleton)
         model = state.get("model_override") or None
-        backend_type = state.get("backend_type", "cli")
         sdk_url = state.get("sdk_url")
-        client = create_backend(backend_type=backend_type, model=model, base_url=sdk_url)
+        timeout = state.get("timeout_override")
+        backend_created_at = time.perf_counter()
+        client = create_backend(
+            backend_type=backend_type,
+            model=model,
+            timeout=timeout,
+            base_url=sdk_url,
+        )
+        execute_prompt_started_at = time.perf_counter()
+        dispatch_wait_ms = (execute_prompt_started_at - backend_created_at) * 1000
+        log.info(
+            "[%s] Backend ready | backend=%s | max_parallel=%s | dispatch_wait_ms=%.2f",
+            agent_name.upper(), backend_type, max_parallel, dispatch_wait_ms,
+        )
         
         # All agents run on the sandboxed repo copy
         working_dir = state["working_repo"]
@@ -178,7 +197,10 @@ def create_node_wrapper(agent_name: str, prompt_file: Path) -> Callable[[Securit
         
         if agent_result["success"]:
             state_update["completed_steps"] = [agent_name]
-            log.info(f"[{agent_name.upper()}] Done ({agent_result['duration']:.1f}s)")
+            log.info(
+                "[%s] Done | backend=%s | max_parallel=%s | duration=%.1fs",
+                agent_name.upper(), backend_type, max_parallel, agent_result["duration"],
+            )
             
             # Populate fingerprint/file_manifest after ingest
             if agent_name == "ingest":
@@ -192,7 +214,10 @@ def create_node_wrapper(agent_name: str, prompt_file: Path) -> Callable[[Securit
                 state_update["stop_requested"] = True
                 log.error(f"{err_msg} — Pipeline will stop.")
             else:
-                log.error(err_msg)
+                log.error(
+                    "%s | backend=%s | max_parallel=%s",
+                    err_msg, backend_type, max_parallel,
+                )
             
         return state_update
         

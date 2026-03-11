@@ -1,5 +1,6 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
+import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom"
 import { Layout } from "./components/layout/Layout"
+import { ErrorBoundary } from "./components/ErrorBoundary"
 import Dashboard from "./pages/Dashboard"
 import ProjectDetail from "./pages/ProjectDetail"
 import ScanReport from "./pages/ScanReport"
@@ -8,9 +9,11 @@ import AllScans from "./pages/AllScans"
 import Settings from "./pages/Settings"
 import LaunchScan from "./pages/LaunchScan"
 
-function App() {
+function AppRoutes() {
+  const location = useLocation()
+
   return (
-    <Router>
+    <ErrorBoundary resetKey={location.pathname}>
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
@@ -22,6 +25,14 @@ function App() {
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
+    </ErrorBoundary>
+  )
+}
+
+function App() {
+  return (
+    <Router>
+      <AppRoutes />
     </Router>
   )
 }
