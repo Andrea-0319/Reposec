@@ -1,9 +1,35 @@
+# Environment & secrets
 .env
-state/
+.env.local
+.env.production
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.coverage
+.pytest_cache/
+
+# Node
+node_modules/
+
+# Project artifacts
+state/
 logs/
 security_report.md
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Misc
 docx_extracted/
 temp.zip
 Presentazione_progetto.docx

@@ -15,6 +15,7 @@ Static pages:
   /compare       → compare.html
   /launch        → launch.html
 """
+import logging
 import subprocess
 import sys
 import time
@@ -34,6 +35,31 @@ from config import Config
 from dashboard import db
 from dashboard.report_parser import parse_report, extract_severity_counts
 from orchestrator.opencode_client import find_opencode_executable, _validate_model_name
+from orchestrator.git_cloner import is_git_url, validate_git_url, parse_repo_name, list_remote_branches
+
+# ---------------------------------------------------------------------------
+# Uvicorn access-log filter: suppress noisy polling & static-asset requests
+# ---------------------------------------------------------------------------
+class _QuietAccessFilter(logging.Filter):
+    """Drop repetitive access-log entries that clutter the terminal."""
+
+    # Patterns to suppress (status polling, static assets, favicon)
+    _SUPPRESS = re.compile(
+        r'"GET /api/scans/\d+/status '
+        r'|"GET /assets/'
+        r'|"GET /favicon'
+    )
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not self._SUPPRESS.search(msg)
+
+
+def _install_access_log_filter() -> None:
+    """Attach the quiet filter to uvicorn's access logger."""
+    uv_access = logging.getLogger("uvicorn.access")
+    uv_access.addFilter(_QuietAccessFilter())
+
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -183,6 +209,7 @@ def _load_opencode_models(force_refresh: bool = False) -> dict:
 @app.on_event("startup")
 def _startup() -> None:
     db.init_db(Config.DB_PATH)
+    _install_access_log_filter()
 
 
 # ---------------------------------------------------------------------------
@@ -350,6 +377,25 @@ async def api_compare(id_a: int, id_b: int):
 
 
 # ---------------------------------------------------------------------------
+# API: Git branch discovery
+# ---------------------------------------------------------------------------
+class BranchRequest(BaseModel):
+    url: str
+
+
+@app.post("/api/git/branches")
+async def api_git_branches(req: BranchRequest):
+    """Discover branches on a remote Git repository."""
+    try:
+        validate_git_url(req.url)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    result = list_remote_branches(req.url, timeout=15)
+    return result  # {"branches": [...], "default_branch": ..., "error": ...}
+
+
+# ---------------------------------------------------------------------------
 # API: Launch new scan
 # ---------------------------------------------------------------------------
 class LaunchRequest(BaseModel):
@@ -359,15 +405,29 @@ class LaunchRequest(BaseModel):
     sdk_url: Optional[str] = None
     timeout: Optional[int] = None
     parallel: int = 1
+    branch: Optional[str] = None
 
 
 @app.post("/api/scans/launch")
 async def api_launch_scan(req: LaunchRequest):
     """Launch a new security scan as a subprocess."""
     req.repo_path = _sanitize_repo_path(req.repo_path)
-    repo = Path(req.repo_path).resolve()
-    if not repo.exists() or not repo.is_dir():
-        raise HTTPException(400, f"Invalid repo path: {req.repo_path}")
+    remote = is_git_url(req.repo_path)
+
+    if remote:
+        # Validate URL format; local path validation is skipped (clone happens in subprocess)
+        try:
+            validate_git_url(req.repo_path)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        project_name = parse_repo_name(req.repo_path)
+        repo_display = req.repo_path  # keep original URL for display
+    else:
+        repo = Path(req.repo_path).resolve()
+        if not repo.exists() or not repo.is_dir():
+            raise HTTPException(400, f"Invalid repo path: {req.repo_path}")
+        project_name = repo.name
+        repo_display = str(repo)
 
     # Clamp parallel to valid range
     parallel = max(1, min(req.parallel, 4))
@@ -375,7 +435,7 @@ async def api_launch_scan(req: LaunchRequest):
 
     # Create project entry
     project_id = db.upsert_project(
-        name=repo.name, repo_path=str(repo), db_path=Config.DB_PATH
+        name=project_name, repo_path=repo_display, db_path=Config.DB_PATH
     )
 
     # Create scan directory
@@ -390,12 +450,14 @@ async def api_launch_scan(req: LaunchRequest):
         db_path=Config.DB_PATH,
     )
 
-    # Build subprocess command
-    cmd = [sys.executable, str(Config.BASE_PATH / "main.py"), str(repo),
+    # Build subprocess command — pass the original URL (or local path) to main.py
+    cmd = [sys.executable, str(Config.BASE_PATH / "main.py"), req.repo_path,
            "--parallel", str(parallel),
            "--scan-dir", str(scan_dir),
            "--scan-id", str(scan_id),
            "--no-dashboard"]
+    if req.branch:
+        cmd.extend(["--branch", req.branch])
     if req.model:
         cmd.extend(["--model", req.model])
     if req.backend:

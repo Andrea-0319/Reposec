@@ -8,6 +8,7 @@ from typing import Callable
 
 from config import Config, setup_logger
 from orchestrator.graph import create_workflow
+from orchestrator.git_cloner import is_git_url, clone_repo, parse_repo_name
 
 
 _STARTUP_ERROR_FILE = "startup_error.txt"
@@ -113,6 +114,10 @@ def main() -> None:
         "--scan-id", type=int, default=None,
         help="Existing DB scan id to update instead of inserting a new row (set by dashboard launcher)",
     )
+    parser.add_argument(
+        "--branch", default=None,
+        help="Git branch/tag to clone (remote repos only)",
+    )
     args = parser.parse_args()
 
     # If --dashboard mode, start the server and exit
@@ -126,14 +131,18 @@ def main() -> None:
     if not args.repo_path:
         parser.error("repo_path is required (unless using --dashboard)")
     
-    # Resolve and validate the repo path
+    # Resolve and validate the repo path (supports both local dirs and remote URLs)
     raw_path = args.repo_path.strip().strip('"').strip("'")
-    repo_path = Path(raw_path).resolve()
-    if not repo_path.exists() or not repo_path.is_dir():
-        logger.error(f"Repository path does not exist or is not a directory: {repo_path}")
-        return
-        
-    logger.info(f"Starting analysis of: {repo_path}")
+    is_remote = is_git_url(raw_path)
+    # repo_path is set after scan_dir is ready (remote repos need clone_dest inside scan_dir)
+    repo_path: Path | None = None
+
+    if not is_remote:
+        repo_path = Path(raw_path).resolve()
+        if not repo_path.exists() or not repo_path.is_dir():
+            logger.error(f"Repository path does not exist or is not a directory: {repo_path}")
+            return
+        logger.info(f"Starting analysis of: {repo_path}")
     
     # Setup scan output directory (reuse if passed by dashboard)
     if args.scan_dir:
@@ -146,7 +155,22 @@ def main() -> None:
         logger.info(f"Scan directory created at: {scan_dir}")
 
     _clear_startup_error(scan_dir)
-    
+
+    # Remote repos: shallow-clone into scan_dir before sandboxing
+    if is_remote:
+        clone_dest = scan_dir / "git_clone"
+        try:
+            repo_path = clone_repo(raw_path, clone_dest, branch=args.branch, timeout=300)
+            logger.info(f"Cloned remote repo to: {repo_path}")
+        except RuntimeError as e:
+            error_message = f"Git clone failed: {e}"
+            _write_startup_error(scan_dir, error_message)
+            _persist_failed_scan(args.scan_id)
+            logger.error(error_message)
+            return
+
+    assert repo_path is not None  # guaranteed by either branch above
+
     # Create a sandboxed copy of the repo (agents work on the copy, never the original)
     repo_copy_dir = scan_dir / "repo_copy"
     try:
