@@ -23,8 +23,11 @@ fi
 
 echo ""
 echo "  Starting Security Review Dashboard..."
-echo "  Open http://localhost:8000 in your browser"
+echo "  The browser will open automatically."
 echo "  Press Ctrl+C to stop"
 echo ""
+
+# Open browser after a short delay (gives the server time to start)
+(sleep 2 && if command -v xdg-open &>/dev/null; then xdg-open http://localhost:8000; elif command -v open &>/dev/null; then open http://localhost:8000; fi) &
 
 python main.py --dashboard

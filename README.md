@@ -33,7 +33,7 @@ The setup script creates a virtual environment, installs all dependencies, build
 | **Windows** | Double-click `start_dashboard.bat` |
 | **macOS / Linux** | `./start_dashboard.sh` |
 
-Then open **http://localhost:8000** in your browser.
+The dashboard opens automatically in your default browser.
 
 ## Prerequisites
 
@@ -188,6 +188,36 @@ SecurityReviewSystem/
 ├── setup.sh/.bat    # Automated setup scripts
 └── start_dashboard.sh/.bat  # Dashboard launcher scripts
 ```
+
+## Current Limitations
+
+> **This system is an MVP and works best on small-to-medium repositories with a straightforward structure.**
+> Complex, large-scale codebases may exceed the LLM's context window or produce less accurate results.
+
+Key constraints to be aware of:
+
+| Area | Description |
+|---|---|
+| **False Positives** | The LLM may flag non-existent vulnerabilities due to misunderstanding of context |
+| **Implicit Assumptions** | The model can make incorrect assumptions about unfamiliar libraries, frameworks, or design patterns |
+| **Context Window** | Files exceeding the LLM token limit cannot be fully analyzed in a single pass |
+| **Hallucinations** | Research shows 19–45 % of AI-generated security recommendations can be inaccurate ([Yu et al. 2024](https://arxiv.org/abs/2405.12106)) |
+| **Cost & Latency** | Each scan involves multiple LLM calls; cost and time scale with repository size |
+
+The system is designed as a **developer support tool**, not a replacement for a qualified security expert. All findings should be validated by personnel with appropriate expertise before taking corrective action.
+
+## Roadmap
+
+Planned improvements to evolve the system beyond the current MVP:
+
+- [ ] **Cognee Knowledge Graph** — Persistent memory across scans: each validated finding enriches the knowledge base, enabling the system to learn from past analyses and improve over time
+- [ ] **SonarQube MCP Integration** — Independent validation of LLM findings against SonarQube's 5 000+ static analysis rules, reducing false positives through cross-checking
+- [ ] **GitHub MCP Integration** — Read commit history and PR context for richer analysis; auto-create GitHub Issues from findings
+- [ ] **Context7 MCP** — Real-time access to up-to-date library/framework documentation so agents can reason about the latest APIs and known CVEs
+- [ ] **CI/CD Pipeline Integration** — Trigger scans automatically on push/PR events and gate merges on security thresholds
+- [ ] **Multi-Model Support** — Allow different LLM providers per agent (e.g., GPT-4 for compliance, a smaller model for dependency checks) to optimize cost vs. accuracy
+- [ ] **Structured Output Validation** — Add a validator module (inspired by [RepoAudit](https://github.com/PurCL/RepoAudit)) to verify data-flow facts and reduce hallucinations
+- [ ] **Multi-Stakeholder Reports** — Generate both developer-oriented and executive-level summaries from the same scan
 
 ## Contributing
 

@@ -22,9 +22,12 @@ if not exist "frontend\dist\index.html" (
 
 echo.
 echo   Starting Security Review Dashboard...
-echo   Open http://localhost:8000 in your browser
+echo   The browser will open automatically.
 echo   Press Ctrl+C to stop
 echo.
+
+REM Open browser after a short delay (gives the server time to start)
+start "" cmd /c "timeout /t 2 /nobreak >nul & start http://localhost:8000"
 
 python main.py --dashboard
 pause
