@@ -104,8 +104,10 @@ This abstraction ensures that the higher-level graph (`nodes.py`) never cares ho
 Analyzing untrusted or potentially malicious code requires strict guardrails.
 
 1. **Workspace Sandboxing**: 
-   The `main.py` entry point creates a dedicated, temporal scanning directory (`state/scan_<timestamp>`). The target repository is structurally copied into a `repo_copy/` subdirectory.
-   - Agents are `chroot`-like confined to execute terminal commands only within `repo_copy`.
+   The `main.py` entry point creates a dedicated, temporal scanning directory (`state/scan_<timestamp>`).
+   - For remote Git URLs, the repository is first cloned into a `git_clone/` directory within the scan directory using `orchestrator/git_cloner.py`.
+   - Then, the target repository (local, or the remote clone) is structurally copied into a `repo_copy/` subdirectory.
+   - Agents are `chroot`-like confined to execute terminal commands only within `repo_copy/`.
    - The original source repository is never mutated.
    - Transient files `.env`, `venv`, `node_modules`, `.git` are ignored during the copy to prevent agents from snooping sensitive local states.
 
@@ -126,6 +128,6 @@ To make the multi-agent outputs manageable and track project security postures o
 1. **Data Layer (`dashboard/db.py`)**: 
    A relational SQLite database (`state/security_review.db`) holding `projects`, `scans`, and structured `findings`. When an LLM finishes generating the Markdown report, `dashboard/report_parser.py` extracts the severity counts (Critical, High, Medium, Low) and finding details via regex and saves them into the DB.
 2. **Backend (`dashboard/app.py`)**: 
-   A fast, synchronous/asynchronous FastAPI server providing REST endpoints (e.g., `/api/projects`, `/api/scans/{id}`). It also controls a background thread to safely trigger new LangGraph executions via `subprocess` from the browser UI while allowing status polling.
-3. **Frontend (`dashboard/static`, `dashboard/templates`)**: 
-   A vanilla HTML/JS/CSS client focusing on speed and zero build-steps. Uses **Chart.js** to render severity distribution donuts and longitudinal trend lines to track resolving/introducing of vulnerabilities across successive scans. Includes a diff engine endpoint to natively compare scans (added, resolved, unchanged).
+   A fast FastAPI server providing REST endpoints (e.g., `/api/projects`, `/api/scans/{id}`, `/api/scans/{id_a}/compare/{id_b}`). It controls a background thread to safely trigger new LangGraph executions via `subprocess`, handles remote Git branch discovery (`/api/git/branches`), and serves the compiled SPA frontend.
+3. **Frontend (`frontend/`)**: 
+   A modern React Single Page Application (SPA) built with Vite, TypeScript, Tailwind CSS, and Recharts. Built and served from `frontend/dist`. Uses Recharts to render severity distribution donuts and longitudinal trend lines to track resolving/introducing of vulnerabilities across successive scans. Includes an interface to natively compare scans (added, resolved, unchanged).
