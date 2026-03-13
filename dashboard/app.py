@@ -24,6 +24,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -64,7 +65,13 @@ def _install_access_log_filter() -> None:
 # ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
-app = FastAPI(title="Security Review Dashboard", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.init_db(Config.DB_PATH)
+    _install_access_log_filter()
+    yield
+
+app = FastAPI(title="Security Review Dashboard", version="1.0.0", lifespan=lifespan)
 
 # Allow CORS for local dev with Vite matching
 app.add_middleware(
@@ -205,11 +212,8 @@ def _load_opencode_models(force_refresh: bool = False) -> dict:
 
 # ---------------------------------------------------------------------------
 # Startup: initialize DB
+# Use lifespan above instead of on_event("startup")
 # ---------------------------------------------------------------------------
-@app.on_event("startup")
-def _startup() -> None:
-    db.init_db(Config.DB_PATH)
-    _install_access_log_filter()
 
 
 # ---------------------------------------------------------------------------
@@ -468,25 +472,34 @@ async def api_launch_scan(req: LaunchRequest):
         cmd.extend(["--timeout", str(timeout)])
 
     # Launch in background thread (non-blocking)
-    # Pre-populate tracking dict *before* starting the thread to avoid a race
+    # Pre-populate tracking dict to avoid a race
     start_ts = time.time()
-    _running_scans[scan_id] = {"scan_dir": str(scan_dir), "start_time": start_ts}
+    
+    try:
+        # Start the process synchronously in the main thread
+        proc = subprocess.Popen(
+            cmd, cwd=str(Config.BASE_PATH),
+            stdout=sys.stdout, stderr=sys.stderr,
+        )
+        _running_scans[scan_id] = {
+            "scan_dir": str(scan_dir), 
+            "start_time": start_ts,
+            "process": proc
+        }
+    except Exception as e:
+        db.update_scan_status(scan_id, "failed", db_path=Config.DB_PATH)
+        raise HTTPException(500, f"Failed to launch scan process: {str(e)}")
 
-    def _run():
+    def _wait_and_finalize():
         try:
-            proc = subprocess.Popen(
-                cmd, cwd=str(Config.BASE_PATH),
-                stdout=sys.stdout, stderr=sys.stderr,
-            )
-            _running_scans[scan_id]["process"] = proc
             proc.wait()  # Block this thread until complete
             _finalize_scan(scan_id, _running_scans.get(scan_id, {}))
-            _running_scans.pop(scan_id, None)
         except Exception as e:
             db.update_scan_status(scan_id, "failed", db_path=Config.DB_PATH)
+        finally:
             _running_scans.pop(scan_id, None)
 
-    thread = threading.Thread(target=_run, daemon=True)
+    thread = threading.Thread(target=_wait_and_finalize, daemon=True)
     thread.start()
 
     return {"scan_id": scan_id, "status": "running"}
