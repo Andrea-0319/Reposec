@@ -34,6 +34,7 @@ For every finding, use this exact structure and separate findings with `---`:
 
 ## Rules
 - DO NOT invent vulnerabilities.
+- You are allowed to use your web browsing tools to look up library documentation or search for recent CVEs.
 - Report only evident issues based on the previous findings and the codebase context.
 - If no compliance gaps are found, write a summary stating that no findings were detected and do not invent placeholder findings.
 - Use exactly one severity per finding: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, or `INFO`.

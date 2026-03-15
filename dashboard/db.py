@@ -15,8 +15,10 @@ _DEFAULT_DB = Path(__file__).parent.parent / "state" / "security_review.db"
 
 def _get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
     """Create a connection with row_factory for dict-like access."""
-    path = str(db_path or _DEFAULT_DB)
-    conn = sqlite3.connect(path)
+    actual_path = db_path or _DEFAULT_DB
+    # Crea la directory genitore (es. 'state') se non esiste
+    actual_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(actual_path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")      # Better concurrent reads
     conn.execute("PRAGMA foreign_keys=ON")        # Enforce FK constraints
